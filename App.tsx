@@ -1,0 +1,438 @@
+
+import React, { useState, useRef } from 'react';
+import { BodyProfile, StudioConfig, Language } from './types';
+import { TRANSLATIONS, Icons } from './constants';
+import { GeminiService } from './services/geminiService';
+
+const COMMON_COLORS = [
+  { name: 'Black', hex: '#000000' },
+  { name: 'White', hex: '#FFFFFF' },
+  { name: 'Red', hex: '#E11D48' },
+  { name: 'Navy', hex: '#1E3A8A' },
+  { name: 'Beige', hex: '#F5F5DC' },
+  { name: 'Pink', hex: '#DB2777' },
+  { name: 'Emerald', hex: '#059669' },
+];
+
+const App: React.FC = () => {
+  const [lang, setLang] = useState<Language>('ar');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sourceImage, setSourceImage] = useState<string | null>(null);
+  const [layerImage, setLayerImage] = useState<string | null>(null);
+  const [layerPosition, setLayerPosition] = useState<'under' | 'over'>('under');
+  const [resultImage, setResultImage] = useState<string | null>(null);
+  
+  const [profile, setProfile] = useState<BodyProfile>({
+    chest: 50,
+    shoulders: 50,
+    waist: 50,
+    fitType: 'athletic',
+    garmentColor: undefined
+  });
+
+  const [studio, setStudio] = useState<StudioConfig>({
+    lighting: 'sunlight',
+    is360Mode: false
+  });
+
+  const t = TRANSLATIONS[lang];
+  const primaryInputRef = useRef<HTMLInputElement>(null);
+  const layerInputRef = useRef<HTMLInputElement>(null);
+  const colorInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'primary' | 'layer') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (type === 'primary') {
+          setSourceImage(event.target?.result as string);
+        } else {
+          setLayerImage(event.target?.result as string);
+        }
+        setResultImage(null);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const runRender = async () => {
+    if (!sourceImage) return;
+    
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await GeminiService.renderGhostMannequin(
+        sourceImage, 
+        profile, 
+        studio, 
+        layerImage || undefined,
+        layerPosition
+      );
+      setResultImage(result);
+    } catch (err: any) {
+      setError(lang === 'ar' ? "حدث خطأ أثناء التجسيد. يرجى المحاولة مرة أخرى." : "An error occurred during rendering. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleLang = () => setLang(prev => prev === 'en' ? 'ar' : 'en');
+
+  return (
+    <div className={`min-h-screen flex flex-col ${lang === 'ar' ? 'rtl' : 'ltr'}`}>
+      <nav className="sticky top-0 z-50 glass border-b border-gray-100 px-6 py-4 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg">
+            A
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">{t.title}</h1>
+            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-medium">
+              {t.subtitle}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={toggleLang}
+            className="text-xs font-semibold px-4 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            {lang === 'en' ? 'العربية' : 'English'}
+          </button>
+          
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Engine 2.5 Active</span>
+          </div>
+        </div>
+      </nav>
+
+      <main className="flex-1 flex flex-col lg:flex-row p-6 gap-6 max-w-7xl mx-auto w-full">
+        <section className="flex-1 space-y-6">
+          <div className="space-y-4">
+            <button 
+              onClick={() => primaryInputRef.current?.click()}
+              className={`w-full group glass p-8 rounded-2xl flex flex-col items-center justify-center gap-4 border-2 border-dashed transition-all ${sourceImage ? 'border-black bg-gray-50/50 shadow-inner' : 'border-gray-200 hover:border-black'}`}
+            >
+              <div className="p-4 bg-gray-50 rounded-full group-hover:scale-110 transition-transform">
+                <Icons.Upload />
+              </div>
+              <div className="text-center">
+                <span className="text-sm font-bold block">{t.uploadBtn}</span>
+                <span className="text-[11px] text-gray-400 mt-1 block">{sourceImage ? "Primary Piece Loaded" : "Main garment for the invisible profile"}</span>
+              </div>
+              <input 
+                type="file" 
+                ref={primaryInputRef} 
+                className="hidden" 
+                accept="image/*" 
+                onChange={(e) => handleFileUpload(e, 'primary')}
+              />
+            </button>
+          </div>
+
+          <div className="glass p-6 rounded-2xl space-y-6 shadow-sm border-gray-200">
+            <div className="flex items-center gap-2 border-b border-gray-100 pb-4">
+              <Icons.Settings />
+              <h2 className="font-bold">{t.settings}</h2>
+            </div>
+
+            <div className="space-y-4">
+              {[
+                { label: t.shoulders, key: 'shoulders', sub: lang === 'ar' ? 'توسيع الكتفين' : 'Shoulder Span' },
+                { label: t.chest, key: 'chest', sub: lang === 'ar' ? 'بروز الصدر' : 'Bust Definition' },
+                { label: t.waist, key: 'waist', sub: lang === 'ar' ? 'تخصير القماش' : 'Waist Taper' }
+              ].map((slider) => (
+                <div key={slider.key} className="space-y-1">
+                  <div className="flex justify-between text-[11px] font-bold text-gray-600">
+                    <div className="flex flex-col">
+                      <span>{slider.label}</span>
+                      <span className="text-[9px] text-gray-400 font-normal uppercase">{slider.sub}</span>
+                    </div>
+                    <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-800">{profile[slider.key as keyof BodyProfile]}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="1" max="100" 
+                    value={profile[slider.key as keyof BodyProfile] as number}
+                    onChange={(e) => setProfile({...profile, [slider.key]: parseInt(e.target.value)})}
+                    className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-black"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 block">{t.fit}</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['slim', 'athletic', 'relaxed', 'plus'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setProfile({...profile, fitType: f})}
+                    className={`flex flex-col items-center py-3 px-1 rounded-xl text-[10px] font-bold border transition-all ${
+                      profile.fitType === f 
+                        ? 'bg-black text-white border-black shadow-xl ring-2 ring-black ring-offset-2' 
+                        : 'bg-white text-gray-500 border-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="mb-1 text-xs">
+                      {f === 'slim' && "S"}
+                      {f === 'athletic' && "A"}
+                      {f === 'relaxed' && "R"}
+                      {f === 'plus' && "P"}
+                    </span>
+                    {t[f]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-gray-50">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 block">{t.color}</label>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {COMMON_COLORS.map((c) => (
+                  <button
+                    key={c.hex}
+                    onClick={() => setProfile({...profile, garmentColor: c.name})}
+                    title={c.name}
+                    className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${
+                      profile.garmentColor === c.name ? 'border-black scale-110 shadow-lg' : 'border-transparent shadow-sm'
+                    }`}
+                    style={{ backgroundColor: c.hex }}
+                  />
+                ))}
+                <button
+                  onClick={() => colorInputRef.current?.click()}
+                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center bg-gray-50 transition-all hover:bg-gray-100 ${
+                    profile.garmentColor && !COMMON_COLORS.find(c => c.name === profile.garmentColor) 
+                      ? 'border-black scale-110 shadow-lg' 
+                      : 'border-gray-200'
+                  }`}
+                  style={profile.garmentColor && !COMMON_COLORS.find(c => c.name === profile.garmentColor) ? {backgroundColor: profile.garmentColor} : {}}
+                >
+                  <Icons.Palette />
+                </button>
+                <input 
+                  type="color" 
+                  ref={colorInputRef} 
+                  className="hidden" 
+                  onChange={(e) => setProfile({...profile, garmentColor: e.target.value})} 
+                />
+              </div>
+              {profile.garmentColor && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Selected: {profile.garmentColor}</span>
+                  <button 
+                    onClick={() => setProfile({...profile, garmentColor: undefined})}
+                    className="text-[10px] font-bold text-red-500 hover:underline uppercase"
+                  >
+                    Clear Color
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="glass p-6 rounded-2xl space-y-6 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-gray-100 pb-4">
+              <div className="p-1.5 bg-gray-900 rounded text-white"><Icons.Layer /></div>
+              <h2 className="font-bold">{t.studio}</h2>
+            </div>
+            
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.lighting}</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['sunlight', 'night', 'office', 'studio'] as const).map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setStudio({...studio, lighting: l})}
+                    className={`py-2 rounded-lg text-[11px] font-semibold border transition-all ${
+                      studio.lighting === l 
+                        ? 'bg-black text-white border-black shadow-md' 
+                        : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    {t[l === 'studio' ? 'studioMode' : l]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-gray-50">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.layeringTitle}</label>
+                {layerImage && (
+                  <button 
+                    onClick={() => setLayerImage(null)}
+                    className="text-[10px] font-bold text-red-500 hover:underline"
+                  >
+                    {t.clearLayer}
+                  </button>
+                )}
+              </div>
+
+              {!layerImage ? (
+                <button 
+                  onClick={() => layerInputRef.current?.click()}
+                  className="w-full py-4 border-2 border-dashed border-blue-200 bg-blue-50/20 rounded-xl flex items-center justify-center gap-3 group hover:border-blue-400 hover:bg-blue-50/40 transition-all"
+                >
+                  <div className="text-blue-600"><Icons.Layer /></div>
+                  <span className="text-xs font-bold text-blue-700">{t.layerBtn}</span>
+                  <input 
+                    type="file" 
+                    ref={layerInputRef} 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={(e) => handleFileUpload(e, 'layer')}
+                  />
+                </button>
+              ) : (
+                <div className="flex gap-2 animate-in fade-in slide-in-from-top-2">
+                  <button 
+                    onClick={() => setLayerPosition('under')}
+                    className={`flex-1 py-3 rounded-xl text-xs font-bold border flex flex-col items-center gap-1 transition-all ${
+                      layerPosition === 'under' 
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-lg' 
+                        : 'bg-white text-blue-700 border-blue-100 hover:border-blue-300'
+                    }`}
+                  >
+                    <span className="text-lg opacity-50">⇣</span>
+                    {t.layerUnder}
+                  </button>
+                  <button 
+                    onClick={() => setLayerPosition('over')}
+                    className={`flex-1 py-3 rounded-xl text-xs font-bold border flex flex-col items-center gap-1 transition-all ${
+                      layerPosition === 'over' 
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-lg' 
+                        : 'bg-white text-blue-700 border-blue-100 hover:border-blue-300'
+                    }`}
+                  >
+                    <span className="text-lg opacity-50">⇡</span>
+                    {t.layerOver}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button 
+            disabled={!sourceImage || loading}
+            onClick={runRender}
+            className={`w-full py-5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all ${
+              !sourceImage || loading 
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                : 'bg-black text-white hover:bg-gray-800 shadow-2xl scale-100 hover:scale-[1.02] active:scale-[0.98]'
+            }`}
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Icons.Render />
+            )}
+            {loading ? (lang === 'ar' ? "جارٍ التوليد..." : "Generating...") : t.generate}
+          </button>
+        </section>
+
+        <section className="flex-[1.5] flex flex-col gap-4">
+          <div className="flex-1 glass rounded-3xl overflow-hidden relative min-h-[500px] flex items-center justify-center bg-gray-50 border border-gray-100 shadow-inner">
+            {!sourceImage && !loading && (
+              <div className="text-center p-8 animate-in fade-in zoom-in duration-500">
+                <div className="w-24 h-24 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-gray-300">
+                  <Icons.Upload />
+                </div>
+                <h3 className="font-bold text-gray-400 text-lg">{t.ghostTech}</h3>
+                <p className="text-sm text-gray-400 max-w-[300px] mt-2 leading-relaxed">
+                  {lang === 'ar' 
+                    ? "اختر صورة ملابسك ثم اضبط القالب واللون لمشاهدة الفوارق."
+                    : "Upload your garment and adjust the fit and color to see the differences."}
+                </p>
+              </div>
+            )}
+
+            {loading && (
+              <div className="absolute inset-0 z-10 glass flex flex-col items-center justify-center gap-6 text-center p-12 animate-in fade-in">
+                <div className="relative">
+                  <div className="w-20 h-20 border-4 border-black/10 border-t-black rounded-full animate-spin"></div>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold tracking-tight">
+                    {lang === 'ar' ? "جارٍ التجسيد الخفي..." : "Creating Phantom Render..."}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-2 uppercase tracking-widest font-bold">
+                    {profile.fitType} mode active {profile.garmentColor ? `| ${profile.garmentColor}` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="absolute top-6 left-6 right-6 z-20 bg-red-50 border border-red-100 text-red-600 p-5 rounded-2xl text-sm font-semibold flex justify-between items-center shadow-xl">
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  {error}
+                </div>
+                <button onClick={() => setError(null)} className="text-xl leading-none">&times;</button>
+              </div>
+            )}
+
+            <div className="flex flex-col w-full h-full">
+              {sourceImage && !resultImage && (
+                <div className="flex-1 flex flex-col md:flex-row bg-white/50">
+                  <div className="relative flex-1 border-b md:border-b-0 md:border-e border-gray-100 flex items-center justify-center">
+                    <img src={sourceImage} className="max-w-full max-h-full object-contain p-10 drop-shadow-xl opacity-80" alt="Primary" />
+                    <div className="absolute top-6 left-6 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-sm">Source</div>
+                  </div>
+                  {layerImage && (
+                    <div className="relative flex-1 flex items-center justify-center bg-blue-50/10">
+                      <img src={layerImage} className="max-w-full max-h-full object-contain p-10 drop-shadow-xl opacity-80" alt="Layer" />
+                      <div className="absolute top-6 left-6 bg-blue-500 text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg">Layer</div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {resultImage && (
+                <div className="relative flex-1 bg-white animate-in fade-in duration-700">
+                  <div className="w-full h-full flex items-center justify-center">
+                     <img src={resultImage} className="max-w-full max-h-full object-contain p-10 drop-shadow-2xl" alt="Result" />
+                  </div>
+                  
+                  <div className="absolute top-8 left-8 flex flex-col gap-3">
+                    <div className="bg-black text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl">
+                      {profile.fitType} {profile.garmentColor || ''} Render
+                    </div>
+                  </div>
+                  
+                  <div className="absolute bottom-8 right-8">
+                    <button 
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = resultImage;
+                        link.download = `AruraFit-${profile.fitType}-${profile.garmentColor || 'original'}-${Date.now()}.jpg`;
+                        link.click();
+                      }}
+                      className="bg-black text-white p-4 rounded-full hover:scale-110 active:scale-95 transition-all shadow-2xl flex items-center gap-2"
+                    >
+                      <Icons.Upload />
+                      <span className="text-[10px] font-bold uppercase pr-2">{t.download}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="p-8 text-center text-[10px] text-gray-400 uppercase tracking-[0.3em] font-bold border-t border-gray-50">
+        &copy; 2024 AruraFit Laboratory. Precision Tailoring Engine.
+      </footer>
+    </div>
+  );
+};
+
+export default App;
