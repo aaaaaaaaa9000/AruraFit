@@ -1,26 +1,19 @@
-
 export type Language = 'en' | 'ar';
 
+export type FitType = 'slim' | 'athletic' | 'relaxed' | 'plus';
+
 export interface BodyProfile {
-  chest: number; // 0-100
-  shoulders: number; // 0-100
-  waist: number; // 0-100
-  fitType: 'slim' | 'athletic' | 'relaxed' | 'plus';
-  garmentColor?: string; // Hex or color name
+  chest: number; // 1-100
+  shoulders: number; // 1-100
+  waist: number; // 1-100
+  fitType: FitType;
+  garmentColor?: string; // Named color from the palette or a #rrggbb hex
 }
 
 export type LightingMode = 'sunlight' | 'night' | 'office' | 'studio';
 
 export interface StudioConfig {
   lighting: LightingMode;
-  layering?: string;
-  is360Mode: boolean;
 }
 
-export interface RenderingResult {
-  id: string;
-  imageUrl: string;
-  config: StudioConfig;
-  profile: BodyProfile;
-  timestamp: number;
-}
+export type LayerPosition = 'under' | 'over';

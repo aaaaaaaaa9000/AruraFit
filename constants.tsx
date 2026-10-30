@@ -21,7 +21,6 @@ export const TRANSLATIONS = {
     night: "Evening Ambient",
     office: "Corporate Lighting",
     studioMode: "Clean Studio",
-    compare: "Side-by-side Comparison",
     download: "Export Image",
     reset: "Reset Profile",
     slim: "Petite/Slim",
@@ -32,7 +31,34 @@ export const TRANSLATIONS = {
     layeringTitle: "Layering Configuration",
     layerUnder: "Layer Underneath",
     layerOver: "Layer Over Top",
-    clearLayer: "Remove Layer"
+    clearLayer: "Remove Layer",
+    primaryLoaded: "Primary piece loaded — tap to change",
+    primaryHint: "Main garment for the invisible profile",
+    shoulderSub: "Shoulder Span",
+    chestSub: "Bust Definition",
+    waistSub: "Waist Taper",
+    selectedColor: "Selected",
+    clearColor: "Clear Color",
+    source: "Source",
+    layer: "Layer",
+    result: "Render",
+    generating: "Generating...",
+    creating: "Creating Phantom Render...",
+    emptyHint: "Upload your garment and adjust the fit and color to see the differences.",
+    preparing: "Preparing image...",
+    footer: "AruraFit Laboratory. Precision Tailoring Engine.",
+    colors: { Black: "Black", White: "White", Red: "Red", Navy: "Navy", Beige: "Beige", Pink: "Pink", Emerald: "Emerald" } as Record<string, string>,
+    errors: {
+      invalid_input: "The request was not valid. Please try again.",
+      invalid_image: "Unsupported image. Please use a JPG, PNG or WebP photo.",
+      unreadable_image: "This image could not be read. Please use a JPG, PNG or WebP photo.",
+      image_too_large: "The image is too large. Please use a smaller photo.",
+      rate_limited: "Too many renders in a short time. Please wait a minute and try again.",
+      not_configured: "The server is not configured yet (missing Gemini API key).",
+      no_image_returned: "The AI did not return an image. Try another photo or different settings.",
+      server_error: "An error occurred during rendering. Please try again.",
+      network: "Could not reach the server. Check your connection and try again."
+    } as Record<string, string>
   },
   ar: {
     title: "أرورا فيت",
@@ -53,7 +79,6 @@ export const TRANSLATIONS = {
     night: "إضاءة ليلية",
     office: "إضاءة مكتبية",
     studioMode: "إضاءة استوديو",
-    compare: "مقارنة حية",
     download: "تصدير الصورة",
     reset: "إعادة ضبط",
     slim: "نحيف / صغير",
@@ -64,7 +89,34 @@ export const TRANSLATIONS = {
     layeringTitle: "إعدادات الطبقات",
     layerUnder: "ارتداء تحت الأساسية",
     layerOver: "ارتداء فوق الأساسية",
-    clearLayer: "إزالة الطبقة"
+    clearLayer: "إزالة الطبقة",
+    primaryLoaded: "تم رفع القطعة الأساسية — اضغط للتغيير",
+    primaryHint: "القطعة الأساسية اللي هتظهر على القالب الخفي",
+    shoulderSub: "توسيع الكتفين",
+    chestSub: "بروز الصدر",
+    waistSub: "تخصير القماش",
+    selectedColor: "اللون المختار",
+    clearColor: "إلغاء اللون",
+    source: "الأصل",
+    layer: "الطبقة",
+    result: "النتيجة",
+    generating: "جارٍ التوليد...",
+    creating: "جارٍ التجسيد الخفي...",
+    emptyHint: "اختر صورة ملابسك ثم اضبط القالب واللون لمشاهدة الفوارق.",
+    preparing: "جارٍ تجهيز الصورة...",
+    footer: "مختبر أرورا فيت. محرك التفصيل الدقيق.",
+    colors: { Black: "أسود", White: "أبيض", Red: "أحمر", Navy: "كحلي", Beige: "بيج", Pink: "وردي", Emerald: "زمردي" } as Record<string, string>,
+    errors: {
+      invalid_input: "الطلب غير صالح. حاول مرة أخرى.",
+      invalid_image: "صيغة الصورة غير مدعومة. استخدم صورة JPG أو PNG أو WebP.",
+      unreadable_image: "تعذّر قراءة الصورة. استخدم صورة JPG أو PNG أو WebP.",
+      image_too_large: "الصورة كبيرة جداً. استخدم صورة أصغر.",
+      rate_limited: "طلبات كثيرة في وقت قصير. انتظر دقيقة ثم حاول مرة أخرى.",
+      not_configured: "السيرفر غير مُعد بعد (مفتاح Gemini غير موجود).",
+      no_image_returned: "الذكاء الاصطناعي لم يرجّع صورة. جرّب صورة أخرى أو إعدادات مختلفة.",
+      server_error: "حدث خطأ أثناء التجسيد. يرجى المحاولة مرة أخرى.",
+      network: "تعذّر الوصول للسيرفر. تأكد من الاتصال وحاول مرة أخرى."
+    } as Record<string, string>
   }
 };
 
@@ -87,6 +139,11 @@ export const Icons = {
   Settings: () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+    </svg>
+  ),
+  Download: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
     </svg>
   ),
   Palette: () => (
