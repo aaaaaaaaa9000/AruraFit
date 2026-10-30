@@ -164,6 +164,7 @@ function buildPrompt(body: any, hasLayer: boolean): string {
   - Keep the original length and cut.`,
     `GHOST MANNEQUIN EFFECT:
   - The garment is shaped as if worn by an invisible woman: a hollow 3D form with natural volume and folds.
+  - Give every piece clear, rounded 3D volume as if filled by the body: cups and bust are rounded, hips are curved, pant legs and sleeves are filled out, with soft shading that shows depth. Never lay the garment flat.
   - No skin, face, hands, legs or any body part. No mannequin, hanger, clips, hang tags or price stickers.
   - Where openings allow (neckline, armholes), show the inside back of the garment.`,
     `INVISIBLE BODY:
