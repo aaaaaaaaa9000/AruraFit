@@ -73,7 +73,8 @@ const App: React.FC = () => {
       );
       setResultImage(result);
     } catch (err: any) {
-      setError(lang === 'ar' ? "حدث خطأ أثناء التجسيد. يرجى المحاولة مرة أخرى." : "An error occurred during rendering. Please try again.");
+      const defaultMsg = lang === 'ar' ? "حدث خطأ أثناء التجسيد. يرجى المحاولة مرة أخرى." : "An error occurred during rendering. Please try again.";
+      setError(err?.message || defaultMsg);
     } finally {
       setLoading(false);
     }
