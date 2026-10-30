@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BodyProfile, StudioConfig, Language, LayerPosition } from './types';
+import { BodyProfile, StudioConfig, Language, LayerPosition, Quality, DisplayStyle } from './types';
 import { TRANSLATIONS, Icons } from './constants';
+import { GARMENT_TYPES, DEFAULT_GARMENT_TYPE, findGarmentType, type Measure } from './garmentTypes';
 import { GeminiService, RenderError, prepareImage } from './services/geminiService';
 
 const COMMON_COLORS = [
@@ -17,6 +18,7 @@ const DEFAULT_PROFILE: BodyProfile = {
   chest: 50,
   shoulders: 50,
   waist: 50,
+  hips: 50,
   fitType: 'athletic',
   garmentColor: undefined
 };
@@ -32,9 +34,13 @@ const App: React.FC = () => {
   const [resultImage, setResultImage] = useState<string | null>(null);
   
   const [profile, setProfile] = useState<BodyProfile>(DEFAULT_PROFILE);
+  const [garmentType, setGarmentType] = useState<string>(DEFAULT_GARMENT_TYPE);
+  const [quality, setQuality] = useState<Quality>('standard');
+  const [displayStyle, setDisplayStyle] = useState<DisplayStyle>('ghost');
+  const isFlatlay = displayStyle === 'flatlay';
 
   const [studio, setStudio] = useState<StudioConfig>({
-    lighting: 'sunlight'
+    lighting: 'studio'
   });
 
   const t = TRANSLATIONS[lang];
@@ -49,6 +55,7 @@ const App: React.FC = () => {
 
   const isCustomColor = Boolean(profile.garmentColor && !COMMON_COLORS.find(c => c.name === profile.garmentColor));
   const colorLabel = (color: string) => t.colors[color] || color;
+  const garment = findGarmentType(garmentType);
   const errorMessage = errorCode ? (t.errors[errorCode] || t.errors.server_error) : null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'primary' | 'layer') => {
@@ -85,7 +92,7 @@ const App: React.FC = () => {
     const colorPart = (profile.garmentColor || 'original').replace('#', '');
     const link = document.createElement('a');
     link.href = resultImage;
-    link.download = `AruraFit-${profile.fitType}-${colorPart}-${Date.now()}.${ext}`;
+    link.download = `AruraFit-${garment.id}-${isFlatlay ? 'flatlay' : profile.fitType}-${colorPart}-${Date.now()}.${ext}`;
     link.click();
   };
 
@@ -100,6 +107,9 @@ const App: React.FC = () => {
         sourceImage, 
         profile, 
         studio, 
+        garmentType,
+        quality,
+        displayStyle,
         layerImage || undefined,
         layerPosition
       );
@@ -161,7 +171,41 @@ const App: React.FC = () => {
             </button>
           </div>
 
+          <div className="glass p-6 rounded-2xl space-y-3 shadow-sm border-gray-200">
+            <label htmlFor="garment-type" className="text-xs font-bold text-gray-400 uppercase tracking-widest block">{t.garmentType}</label>
+            <select
+              id="garment-type"
+              value={garmentType}
+              onChange={(e) => setGarmentType(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none focus:border-black"
+            >
+              {GARMENT_TYPES.map((g) => (
+                <option key={g.id} value={g.id}>{lang === 'ar' ? g.ar : g.en}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400">{t.garmentTypeHint}</p>
+
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block pt-3">{t.displayStyle}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['ghost', 'flatlay'] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDisplayStyle(d)}
+                  className={`py-2 px-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                    displayStyle === d
+                      ? 'bg-black text-white border-black shadow-md'
+                      : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
+                  }`}
+                >
+                  {d === 'ghost' ? t.styleGhost : t.styleFlatlay}
+                </button>
+              ))}
+            </div>
+            {isFlatlay && <p className="text-[11px] text-gray-400">{t.styleHint}</p>}
+          </div>
+
           <div className="glass p-6 rounded-2xl space-y-6 shadow-sm border-gray-200">
+            {!isFlatlay && (<>
             <div className="flex items-center gap-2 border-b border-gray-100 pb-4">
               <Icons.Settings />
               <h2 className="font-bold flex-1">{t.settings}</h2>
@@ -174,23 +218,25 @@ const App: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              {[
+              {([
                 { label: t.shoulders, key: 'shoulders', sub: t.shoulderSub },
                 { label: t.chest, key: 'chest', sub: t.chestSub },
-                { label: t.waist, key: 'waist', sub: t.waistSub }
-              ].map((slider) => (
+                { label: t.waist, key: 'waist', sub: t.waistSub },
+                { label: t.hips, key: 'hips', sub: t.hipsSub }
+              ] as { label: string; key: Measure; sub: string }[]).filter((slider) => garment.measures.includes(slider.key)).map((slider) => (
                 <div key={slider.key} className="space-y-1">
                   <div className="flex justify-between text-[11px] font-bold text-gray-600">
                     <div className="flex flex-col">
                       <span>{slider.label}</span>
                       <span className="text-[9px] text-gray-400 font-normal uppercase">{slider.sub}</span>
                     </div>
-                    <span dir="ltr" className="bg-gray-100 px-2 py-0.5 rounded text-gray-800">{profile[slider.key as keyof BodyProfile]}%</span>
+                    <span dir="ltr" className="bg-gray-100 px-2 py-0.5 rounded text-gray-800">{profile[slider.key]}%</span>
                   </div>
                   <input 
                     type="range" 
                     min="1" max="100" 
-                    value={profile[slider.key as keyof BodyProfile] as number}
+                    value={profile[slider.key]}
+                    aria-label={slider.label}
                     onChange={(e) => setProfile({...profile, [slider.key]: parseInt(e.target.value)})}
                     className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-black"
                   />
@@ -222,8 +268,9 @@ const App: React.FC = () => {
                 ))}
               </div>
             </div>
+            </>)}
 
-            <div className="pt-4 border-t border-gray-50">
+            <div className={isFlatlay ? '' : 'pt-4 border-t border-gray-50'}>
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 block">{t.color}</label>
               <div className="flex flex-wrap gap-2 mb-4">
                 {COMMON_COLORS.map((c) => (
@@ -279,7 +326,7 @@ const App: React.FC = () => {
             <div className="space-y-3">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.lighting}</label>
               <div className="grid grid-cols-2 gap-2">
-                {(['sunlight', 'night', 'office', 'studio'] as const).map((l) => (
+                {(['studio', 'sunlight', 'night', 'office'] as const).map((l) => (
                   <button
                     key={l}
                     onClick={() => setStudio({...studio, lighting: l})}
@@ -293,6 +340,26 @@ const App: React.FC = () => {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-gray-50">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block">{t.quality}</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['standard', 'high'] as const).map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => setQuality(q)}
+                    className={`py-2 rounded-lg text-[11px] font-semibold border transition-all ${
+                      quality === q
+                        ? 'bg-black text-white border-black shadow-md'
+                        : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
+                    }`}
+                  >
+                    {q === 'standard' ? t.qualityStandard : t.qualityHigh}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">{t.qualityHint}</p>
             </div>
 
             <div className="space-y-3 pt-4 border-t border-gray-50">
@@ -395,7 +462,7 @@ const App: React.FC = () => {
                     {t.creating}
                   </h3>
                   <p className="text-sm text-gray-500 mt-2 uppercase tracking-widest font-bold">
-                    {t[profile.fitType]} {profile.garmentColor ? `| ${colorLabel(profile.garmentColor)}` : ''}
+                    {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]} {profile.garmentColor ? `| ${colorLabel(profile.garmentColor)}` : ''}
                   </p>
                 </div>
               </div>
@@ -435,7 +502,7 @@ const App: React.FC = () => {
                   
                   <div className="absolute top-6 start-6 sm:top-8 sm:start-8 flex flex-col gap-3">
                     <div className="bg-black text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl">
-                      {t.result}: {t[profile.fitType]}{profile.garmentColor ? ` · ${colorLabel(profile.garmentColor)}` : ''}
+                      {t.result}: {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]}{profile.garmentColor ? ` · ${colorLabel(profile.garmentColor)}` : ''}
                     </div>
                   </div>
                   
