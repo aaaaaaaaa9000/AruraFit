@@ -4,6 +4,7 @@ import { TRANSLATIONS, Icons } from './constants';
 import { GARMENT_TYPES, DEFAULT_GARMENT_TYPE, findGarmentType, type Measure } from './garmentTypes';
 import { RenderError, prepareImage, api, downloadUrl, historyFilename, historyUrls, type HistoryItem, type JobTask, type UsageStats } from './services/geminiService';
 import HistoryView from './HistoryView';
+import BatchView from './BatchView';
 
 const COMMON_COLORS = [
   { name: 'Black', hex: '#000000' },
@@ -57,7 +58,7 @@ const App: React.FC = () => {
   const [progressCount, setProgressCount] = useState({ done: 0, total: 0 });
   const [partialNote, setPartialNote] = useState<string | null>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
-  const [view, setView] = useState<'studio' | 'history'>('studio');
+  const [view, setView] = useState<'studio' | 'batch' | 'history'>('studio');
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [progress, setProgress] = useState<'queued' | 'running' | null>(null);
   
@@ -307,7 +308,7 @@ const App: React.FC = () => {
 
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
         <div role="tablist" className="inline-flex bg-gray-100 rounded-full p-1">
-          {(['studio', 'history'] as const).map((v) => (
+          {(['studio', 'batch', 'history'] as const).map((v) => (
             <button
               key={v}
               role="tab"
@@ -317,15 +318,16 @@ const App: React.FC = () => {
                 view === v ? 'bg-black text-white shadow' : 'text-gray-500 hover:text-black'
               }`}
             >
-              {v === 'studio' ? t.tabStudio : t.tabHistory}
+              {v === 'studio' ? t.tabStudio : v === 'batch' ? t.tabBatch : t.tabHistory}
             </button>
           ))}
         </div>
       </div>
 
+      {view === 'batch' && <BatchView t={t} lang={lang} usage={usage} onChanged={refreshUsage} />}
       {view === 'history' ? (
         <HistoryView t={t} lang={lang} usage={usage} onChanged={refreshUsage} />
-      ) : (
+      ) : view === 'batch' ? null : (
       <main className="flex-1 flex flex-col lg:flex-row p-4 sm:p-6 gap-6 max-w-7xl mx-auto w-full">
         <section className="flex-1 min-w-0 space-y-6">
           <div className="space-y-4">

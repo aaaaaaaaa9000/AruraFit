@@ -131,6 +131,7 @@ ${measures}${
   - This is a re-photograph of the provided product, not a new design. Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
   - Sheer, lace and mesh fabrics keep the same transparency.
   - Do not add, remove, simplify or invent anything: no extra jewelry, chains, straps, layers or accessories.
+  - Remove any watermark, store logo, website address or text overlaid on the photo (often in the corners); it is not part of the garment and must not appear in the result. Labels, logos and prints that are physically on the garment stay.
   - Keep the original length and cut.`,
     ...(flatlay ? flatlaySections : ghostSections),
     s.garmentColor
