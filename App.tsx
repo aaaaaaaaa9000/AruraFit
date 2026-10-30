@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { BodyProfile, StudioConfig, Language, LayerPosition, Quality, DisplayStyle, AspectRatio } from './types';
 import { TRANSLATIONS, Icons } from './constants';
 import { GARMENT_TYPES, DEFAULT_GARMENT_TYPE, findGarmentType, type Measure } from './garmentTypes';
-import { RenderError, prepareImage, api, downloadUrl, historyFilename, historyUrls, type HistoryItem, type UsageStats } from './services/geminiService';
+import { RenderError, prepareImage, api, downloadUrl, historyFilename, historyUrls, type HistoryItem, type JobTask, type UsageStats } from './services/geminiService';
 import HistoryView from './HistoryView';
 
 const COMMON_COLORS = [
@@ -14,6 +14,9 @@ const COMMON_COLORS = [
   { name: 'Pink', hex: '#DB2777' },
   { name: 'Emerald', hex: '#059669' },
 ];
+
+const MAX_COLORS = 6;
+type Angle = 'front' | 'back' | 'side';
 
 const DEFAULT_PROFILE: BodyProfile = {
   chest: 50,
@@ -31,6 +34,14 @@ const App: React.FC = () => {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [layerImage, setLayerImage] = useState<string | null>(null);
+  const [backImage, setBackImage] = useState<string | null>(null);
+  const [sideImage, setSideImage] = useState<string | null>(null);
+  const [wantBack, setWantBack] = useState(false);
+  const [wantSide, setWantSide] = useState(false);
+  // Selected garment colors in order; '' is the photo's original color
+  const [colors, setColors] = useState<string[]>(['']);
+  const backInputRef = useRef<HTMLInputElement>(null);
+  const sideInputRef = useRef<HTMLInputElement>(null);
   const [layerPosition, setLayerPosition] = useState<LayerPosition>('under');
   const [results, setResults] = useState<HistoryItem[]>([]);
   const [activeResult, setActiveResult] = useState(0);
@@ -75,8 +86,28 @@ const App: React.FC = () => {
     refreshUsage();
   }, []);
 
-  const isCustomColor = Boolean(profile.garmentColor && !COMMON_COLORS.find(c => c.name === profile.garmentColor));
-  const colorLabel = (color: string) => t.colors[color] || color;
+  const customColors = colors.filter((c) => c && !COMMON_COLORS.find((cc) => cc.name === c));
+  const colorLabel = (color: string) => (color ? t.colors[color] || color : t.colorOriginal);
+  const colorSwatch = (color: string) => COMMON_COLORS.find((c) => c.name === color)?.hex || color || 'transparent';
+  const toggleColor = (color: string) =>
+    setColors((prev) => {
+      if (prev.includes(color)) {
+        const next = prev.filter((c) => c !== color);
+        return next.length ? next : [''];
+      }
+      return prev.length >= MAX_COLORS ? prev : [...prev, color];
+    });
+  const angleLabel = (item: HistoryItem) =>
+    item.settings.angle === 'back'
+      ? t.angleBack
+      : item.settings.angle === 'side'
+        ? item.settings.approximate ? t.angleSideApprox : t.angleSide
+        : t.angleFront;
+  const includeBack = wantBack && Boolean(backImage);
+  const includeSide = wantSide && !isFlatlay;
+  // Original color must be the base render (it can't be produced by recoloring)
+  const orderedColors = colors.includes('') ? ['', ...colors.filter((c) => c)] : colors;
+  const totalImages = variations * (1 + (includeBack ? 1 : 0) + (includeSide ? 1 : 0)) * orderedColors.length;
   const garment = findGarmentType(garmentType);
   const [errorRemaining, setErrorRemaining] = useState<number | undefined>(undefined);
   const errorMessage = errorCode
@@ -87,7 +118,7 @@ const App: React.FC = () => {
     setErrorRemaining(err instanceof RenderError ? err.remaining : undefined);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'primary' | 'layer') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'primary' | 'layer' | 'back' | 'side') => {
     const file = e.target.files?.[0];
     // Reset so picking the same file again still fires onChange
     e.target.value = '';
@@ -98,6 +129,12 @@ const App: React.FC = () => {
       const dataUrl = await prepareImage(file);
       if (type === 'primary') {
         setSourceImage(dataUrl);
+      } else if (type === 'back') {
+        setBackImage(dataUrl);
+        setWantBack(true);
+      } else if (type === 'side') {
+        setSideImage(dataUrl);
+        setWantSide(true);
       } else {
         setLayerImage(dataUrl);
       }
@@ -136,10 +173,13 @@ const App: React.FC = () => {
     try {
       const images: Record<string, string> = { primary: sourceImage };
       if (layerImage) images.layer = layerImage;
-      const task = {
-        primary: 'primary',
-        layer: layerImage ? 'layer' : undefined,
-        profile,
+      if (includeBack) images.back = backImage!;
+      if (includeSide && sideImage) images.side = sideImage;
+
+      // Plan: per version, render the front in the first color, build back/side views on it,
+      // then recolor every angle into each remaining color
+      const common = (color: string, angle: Angle) => ({
+        profile: { ...profile, garmentColor: color || undefined },
         studio,
         garmentType,
         quality,
@@ -147,8 +187,34 @@ const App: React.FC = () => {
         aspectRatio,
         background,
         layerPosition,
-      };
-      const { jobId } = await api.createJob(images, Array.from({ length: variations }, () => task));
+        angle,
+      });
+      const tasks: JobTask[] = [];
+      const push = (task: JobTask) => tasks.push(task) - 1;
+      const [baseColor, ...otherColors] = orderedColors;
+      for (let v = 0; v < variations; v++) {
+        const idx: Partial<Record<Angle, number>> = {};
+        idx.front = push({ kind: 'render', primary: 'primary', layer: layerImage ? 'layer' : undefined, ...common(baseColor, 'front') });
+        if (includeBack) idx.back = push({ kind: 'angle', primary: 'back', refs: [idx.front], ...common(baseColor, 'back') });
+        if (includeSide) {
+          idx.side = push({
+            kind: 'angle',
+            primary: sideImage ? 'side' : undefined,
+            approximate: !sideImage,
+            refs: idx.back !== undefined ? [idx.front, idx.back] : [idx.front],
+            ...common(baseColor, 'side'),
+          });
+        }
+        for (const color of otherColors) {
+          for (const angle of ['front', 'back', 'side'] as Angle[]) {
+            if (idx[angle] === undefined) continue;
+            // A recolored approximate side view is still approximate
+            push({ kind: 'recolor', refs: [idx[angle]!], approximate: angle === 'side' && !sideImage, ...common(color, angle) });
+          }
+        }
+      }
+      if (tasks.length >= 8 && !window.confirm(t.confirmTotal.replace('{n}', String(tasks.length)))) return;
+      const { jobId } = await api.createJob(images, tasks);
       const job = await api.waitForJob(jobId, (j) => {
         setProgress(j.tasks.every((t) => t.status === 'pending') ? 'queued' : 'running');
         setProgressCount({ done: j.done + j.failed, total: j.total });
@@ -243,6 +309,72 @@ const App: React.FC = () => {
                 onChange={(e) => handleFileUpload(e, 'primary')}
               />
             </button>
+
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['back', backImage, setBackImage, backInputRef, t.backPhoto, setWantBack],
+                ['side', sideImage, setSideImage, sideInputRef, t.sidePhoto, setWantSide],
+              ] as const).map(([key, img, setImg, ref, label, setWant]) => (
+                <div key={key} className="relative">
+                  <button
+                    onClick={() => ref.current?.click()}
+                    disabled={preparing}
+                    className={`w-full h-24 glass rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 text-[11px] font-bold text-gray-500 overflow-hidden ${
+                      img ? 'border-black' : 'border-gray-200 hover:border-black'
+                    }`}
+                  >
+                    {img ? <img src={img} alt={label} className="h-full w-full object-contain" /> : <><Icons.Upload />{label}</>}
+                    <input
+                      type="file"
+                      ref={ref}
+                      className="hidden"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) => handleFileUpload(e, key)}
+                    />
+                  </button>
+                  {img && (
+                    <button
+                      onClick={() => { setImg(null); if (key === 'back') setWant(false); }}
+                      aria-label={t.clearLayer}
+                      className="absolute top-1 end-1 w-6 h-6 rounded-full bg-white shadow text-red-500 text-sm leading-none"
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="glass rounded-2xl p-4 space-y-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block">{t.angles}</label>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-2 rounded-lg text-[11px] font-semibold bg-black text-white">{t.angleFront}</span>
+                <button
+                  onClick={() => backImage && setWantBack(!wantBack)}
+                  disabled={!backImage}
+                  title={backImage ? undefined : t.needsBackPhoto}
+                  aria-pressed={includeBack}
+                  className={`px-3 py-2 rounded-lg text-[11px] font-semibold border transition-all ${
+                    includeBack ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'
+                  } ${backImage ? '' : 'opacity-40 cursor-not-allowed'}`}
+                >
+                  {t.angleBack}
+                </button>
+                <button
+                  onClick={() => !isFlatlay && setWantSide(!wantSide)}
+                  disabled={isFlatlay}
+                  aria-pressed={includeSide}
+                  className={`px-3 py-2 rounded-lg text-[11px] font-semibold border transition-all ${
+                    includeSide ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'
+                  } ${isFlatlay ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  {sideImage ? t.angleSide : t.angleSideApprox}
+                </button>
+              </div>
+              {!backImage && <p className="text-[11px] text-gray-400">{t.needsBackPhoto}</p>}
+              {isFlatlay && <p className="text-[11px] text-gray-400">{t.flatlayNoSide}</p>}
+              {includeSide && !sideImage && <p className="text-[11px] text-amber-600">{t.sideApproxNote}</p>}
+            </div>
           </div>
 
           <div className="glass p-6 rounded-2xl space-y-3 shadow-sm border-gray-200">
@@ -346,48 +478,58 @@ const App: React.FC = () => {
 
             <div className={isFlatlay ? '' : 'pt-4 border-t border-gray-50'}>
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 block">{t.color}</label>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {COMMON_COLORS.map((c) => (
-                  <button
-                    key={c.hex}
-                    onClick={() => setProfile({...profile, garmentColor: c.name})}
-                    title={colorLabel(c.name)}
-                    aria-label={colorLabel(c.name)}
-                    className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${
-                      profile.garmentColor === c.name ? 'border-black scale-110 shadow-lg' : 'border-transparent shadow-sm'
-                    }`}
-                    style={{ backgroundColor: c.hex }}
-                  />
-                ))}
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  onClick={() => toggleColor('')}
+                  aria-pressed={colors.includes('')}
+                  className={`h-8 px-3 rounded-full border-2 text-[10px] font-bold transition-all ${
+                    colors.includes('') ? 'border-black bg-black text-white' : 'border-gray-200 bg-white text-gray-600'
+                  }`}
+                >
+                  {t.colorOriginal}
+                </button>
+                {[...COMMON_COLORS.map((c) => c.name), ...customColors].map((name) => {
+                  const order = orderedColors.indexOf(name);
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => toggleColor(name)}
+                      title={colorLabel(name)}
+                      aria-label={colorLabel(name)}
+                      aria-pressed={order !== -1}
+                      className={`relative w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${
+                        order !== -1 ? 'border-black scale-110 shadow-lg' : 'border-gray-200 shadow-sm'
+                      }`}
+                      style={{ backgroundColor: colorSwatch(name) }}
+                    >
+                      {order !== -1 && (
+                        <span dir="ltr" className="absolute -top-1.5 -end-1.5 w-4 h-4 rounded-full bg-black text-white text-[9px] leading-4 font-bold">
+                          {order + 1}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
                 <button
                   onClick={() => colorInputRef.current?.click()}
                   title={t.customColor}
                   aria-label={t.customColor}
-                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center bg-gray-50 transition-all hover:bg-gray-100 ${
-                    isCustomColor ? 'border-black scale-110 shadow-lg' : 'border-gray-200'
-                  }`}
-                  style={isCustomColor ? {backgroundColor: profile.garmentColor} : {}}
+                  disabled={colors.length >= MAX_COLORS}
+                  className="w-8 h-8 rounded-full border-2 border-gray-200 flex items-center justify-center bg-gray-50 transition-all hover:bg-gray-100"
                 >
                   <Icons.Palette />
                 </button>
-                <input 
-                  type="color" 
-                  ref={colorInputRef} 
-                  className="hidden" 
-                  onChange={(e) => setProfile({...profile, garmentColor: e.target.value})} 
+                <input
+                  type="color"
+                  ref={colorInputRef}
+                  className="hidden"
+                  onChange={(e) => {
+                    const hex = e.target.value.toUpperCase();
+                    setColors((prev) => (prev.includes(hex) || prev.length >= MAX_COLORS ? prev : [...prev, hex]));
+                  }}
                 />
               </div>
-              {profile.garmentColor && (
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{t.selectedColor}: <span dir="ltr">{colorLabel(profile.garmentColor)}</span></span>
-                  <button 
-                    onClick={() => setProfile({...profile, garmentColor: undefined})}
-                    className="text-[10px] font-bold text-red-500 hover:underline uppercase"
-                  >
-                    {t.clearColor}
-                  </button>
-                </div>
-              )}
+              <p className="text-[11px] text-gray-400 leading-relaxed">{t.colorsHint}</p>
             </div>
           </div>
 
@@ -593,6 +735,9 @@ const App: React.FC = () => {
                   : t.generating
               : t.generate}
           </button>
+          {totalImages > 1 && !loading && (
+            <p className="text-xs font-bold text-gray-700 text-center">{t.totalImages.replace('{n}', String(totalImages))}</p>
+          )}
           {usage && (
             <p className="text-[11px] text-gray-500 text-center">
               {t.usageToday} <span dir="ltr">{usage.today}/{usage.dailyLimit}</span>
@@ -626,7 +771,7 @@ const App: React.FC = () => {
                     {t.creating}
                   </h3>
                   <p className="text-sm text-gray-500 mt-2 uppercase tracking-widest font-bold">
-                    {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]} {profile.garmentColor ? `| ${colorLabel(profile.garmentColor)}` : ''}
+                    {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]} | {orderedColors.map(colorLabel).join('، ')}
                   </p>
                 </div>
               </div>
@@ -676,7 +821,7 @@ const App: React.FC = () => {
 
                   <div className="absolute top-6 start-6 sm:top-8 sm:start-8 flex flex-col gap-3">
                     <div className="bg-black text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl">
-                      {t.result}: {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]}{profile.garmentColor ? ` · ${colorLabel(profile.garmentColor)}` : ''}
+                      {t.result}: {resultItem ? `${angleLabel(resultItem)} · ${colorLabel(resultItem.settings.garmentColor)}` : ''}
                     </div>
                   </div>
                   
@@ -713,7 +858,10 @@ const App: React.FC = () => {
                 >
                   <img src={historyUrls(r.id).thumb} alt="" className="w-full h-full object-contain" />
                   {r.starred && <span className="absolute top-1 end-1 text-amber-500 text-sm leading-none">★</span>}
-                  <span className="absolute bottom-1 start-1 bg-white/90 rounded px-1 text-[9px] font-bold" dir="ltr">{i + 1}</span>
+                  <span className="absolute bottom-1 inset-x-1 bg-white/90 rounded px-1 text-[9px] font-bold flex items-center gap-1 truncate">
+                    <span className="w-2.5 h-2.5 rounded-full border border-gray-300 shrink-0" style={{ backgroundColor: colorSwatch(r.settings.garmentColor) }} />
+                    {angleLabel(r)}
+                  </span>
                 </button>
               ))}
             </div>

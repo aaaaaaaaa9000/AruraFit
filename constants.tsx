@@ -60,6 +60,20 @@ export const TRANSLATIONS = {
     preparing: "Preparing image...",
     footer: "AruraFit Laboratory. Precision Tailoring Engine.",
     output: "Output",
+    backPhoto: "Back photo (optional)",
+    sidePhoto: "Side photo (optional)",
+    angles: "Angles",
+    angleFront: "Front",
+    angleBack: "Back",
+    angleSide: "Side",
+    angleSideApprox: "Side (approximate)",
+    needsBackPhoto: "Upload a back photo first",
+    sideApproxNote: "No side photo: the side view is inferred from the front and may not be exact.",
+    flatlayNoSide: "Side view is not available in flat lay.",
+    colorOriginal: "Original",
+    colorsHint: "Pick up to 6 colors. The first is rendered from your photo; the others are recolored from that same image so they match exactly.",
+    totalImages: "This will create {n} image(s)",
+    confirmTotal: "This request will create {n} images, counted toward your limits. Continue?",
     aspectRatio: "Image size",
     ratioProduct: "Product 3:4",
     ratioSquare: "Shopify 1:1",
@@ -123,7 +137,8 @@ export const TRANSLATIONS = {
       limit_daily: "Daily limit reached. You can render {remaining} more image(s) today.",
       limit_weekly: "Weekly limit reached. You can render {remaining} more image(s) this week.",
       job_too_large: "Too many images in one request.",
-      not_found: "This image no longer exists."
+      not_found: "This image no longer exists.",
+      dependency_failed: "Skipped because the image it depends on failed."
     } as Record<string, string>
   },
   ar: {
@@ -184,6 +199,20 @@ export const TRANSLATIONS = {
     preparing: "جارٍ تجهيز الصورة...",
     footer: "مختبر أرورا فيت. محرك التفصيل الدقيق.",
     output: "إخراج الصورة",
+    backPhoto: "صورة الضهر (اختياري)",
+    sidePhoto: "صورة الجنب (اختياري)",
+    angles: "الزوايا",
+    angleFront: "أمامي",
+    angleBack: "خلفي",
+    angleSide: "جانبي",
+    angleSideApprox: "جانبي (تقريبي)",
+    needsBackPhoto: "ارفع صورة الضهر الأول",
+    sideApproxNote: "مافيش صورة جنب: الجانبي هيتعمل من الأمامي، فممكن مايبقاش مظبوط 100%.",
+    flatlayNoSide: "الجانبي مش متاح في المفرود.",
+    colorOriginal: "الأصلي",
+    colorsHint: "اختار لحد 6 ألوان. أول لون بيتعمل من صورتك، والباقي بيتلوّن من نفس الصورة عشان يطلعوا متطابقين.",
+    totalImages: "هيتعمل {n} صورة",
+    confirmTotal: "الطلب ده هيعمل {n} صورة وهيتحسبوا من الحد. تكمّل؟",
     aspectRatio: "مقاس الصورة",
     ratioProduct: "منتج 3:4",
     ratioSquare: "Shopify مربع 1:1",
@@ -247,7 +276,8 @@ export const TRANSLATIONS = {
       limit_daily: "وصلت للحد اليومي. باقيلك {remaining} صورة النهارده.",
       limit_weekly: "وصلت للحد الأسبوعي. باقيلك {remaining} صورة الأسبوع ده.",
       job_too_large: "عدد الصور في الطلب الواحد كبير.",
-      not_found: "الصورة دي مابقتش موجودة."
+      not_found: "الصورة دي مابقتش موجودة.",
+      dependency_failed: "اتلغت لأن الصورة اللي معتمدة عليها فشلت."
     } as Record<string, string>
   }
 };

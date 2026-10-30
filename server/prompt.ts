@@ -6,6 +6,7 @@ export const LAYER_POSITIONS = ['under', 'over'] as const;
 export const QUALITIES = ['standard', 'high'] as const;
 export const DISPLAY_STYLES = ['ghost', 'flatlay'] as const;
 export const ASPECT_RATIOS = ['3:4', '1:1', '4:5', '9:16'] as const;
+export const ANGLES = ['front', 'back', 'side'] as const;
 const BACKGROUND_PRESETS: Record<string, string> = { white: 'pure white (#FFFFFF)', gray: 'light gray (#EDEDED)' };
 const NAMED_COLORS = ['Black', 'White', 'Red', 'Navy', 'Beige', 'Pink', 'Emerald'];
 
@@ -56,6 +57,9 @@ export interface RenderSettings {
   background: string; // 'white' | 'gray' | '#rrggbb'
   garmentColor: string;
   measures: Record<Measure, number>;
+  angle: (typeof ANGLES)[number];
+  // Side view inferred from the front (and back) renders because no side photo was given
+  approximate: boolean;
 }
 
 export function parseSettings(raw: any): RenderSettings {
@@ -79,10 +83,13 @@ export function parseSettings(raw: any): RenderSettings {
       waist: clampPercent(profile.waist),
       hips: clampPercent(profile.hips),
     },
+    angle: oneOf(ANGLES, raw?.angle, 'front'),
+    approximate: raw?.approximate === true,
   };
 }
 
-export function buildPrompt(s: RenderSettings, hasLayer: boolean): string {
+// intro replaces the opening instruction (used for back/side views); extra sections are appended
+export function buildPrompt(s: RenderSettings, hasLayer: boolean, intro?: string, extra: string[] = []): string {
   const garment = findGarmentType(s.garmentType);
   const measures = garment.measures.map((m) => `  - ${MEASURE_LINES[m](s.measures[m])}`).join('\n');
   const flatlay = s.displayStyle === 'flatlay';
@@ -116,7 +123,8 @@ ${measures}${
   ];
 
   const sections = [
-    `Create a professional e-commerce ${flatlay ? 'flat-lay' : '"ghost mannequin"'} product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
+    intro ??
+      `Create a professional e-commerce ${flatlay ? 'flat-lay' : '"ghost mannequin"'} product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
     `GARMENT TYPE: ${garment.en}. ${garment.guidance}
   The photo is the source of truth: if anything in this description does not match the photo, follow the photo.`,
     `FIDELITY (highest priority):
@@ -145,5 +153,37 @@ ${measures}${
   - Apply the same fidelity rules to both garments; they must interact physically (overlaps, tucks, shadows).`
     );
   }
+  sections.push(...extra);
   return sections.join('\n\n');
+}
+
+// Back / side view that must match an already generated front render.
+// Image order: [angle photo?] [front render] [back render?]
+export function buildAnglePrompt(s: RenderSettings, hasPhoto: boolean, hasBackRef: boolean): string {
+  const style = s.displayStyle === 'flatlay' ? 'flat-lay' : '"ghost mannequin"';
+  const view = s.angle === 'back' ? 'BACK view' : 'three-quarter SIDE view';
+  const frontIdx = hasPhoto ? 2 : 1;
+  const intro = hasPhoto
+    ? `Image 1 is a photo of the ${s.angle === 'back' ? 'back' : 'side'} of a women's garment. Image ${frontIdx} is the finished FRONT ${style} product photo of the same garment${
+        hasBackRef ? `, and image ${frontIdx + 1} is its finished BACK view` : ''
+      }. Create the matching ${view} ${style} product photo of this garment.`
+    : `Image 1 is the finished FRONT ${style} product photo of a women's garment${
+        hasBackRef ? ', and image 2 is its finished BACK view' : ''
+      }. Create a ${view} ${style} product photo of the same garment, inferred from these views.`;
+  const reference = `MATCH THE REFERENCE:
+  - Same garment color, scale, invisible-body shape, lighting, background and framing as the FRONT image, so the photos look like one set.
+  - ${
+    hasPhoto
+      ? `Reproduce the ${s.angle} design exactly from image 1 (fastenings, straps, cut-outs, seams, prints, lace).`
+      : 'Do not invent details that are not visible in the reference views; keep unseen areas plain and consistent with them.'
+  }`;
+  return buildPrompt(s, false, intro, [reference]);
+}
+
+// Change only the base color of an already generated product photo (one input image)
+export function buildRecolorPrompt(color: string): string {
+  return `Edit the provided product photo. Change ONLY the main fabric base color of the garment to ${color}.
+Keep everything else identical: the garment's shape, folds, volume, size, position and framing, the lighting and shadows, and the background.
+Keep every design detail unchanged: print/pattern design, lace and embroidery motifs, embellishments, trims, hardware, labels and transparency. Prints and lace keep their design; only the base fabric hue and saturation shift.
+Do not add, remove or move anything.`;
 }

@@ -2,19 +2,28 @@ import { randomUUID } from 'crypto';
 import { config } from './config';
 import { generateImage, RenderFailure, type InputImage } from './gemini';
 import { addItem, makeSourceThumb } from './history';
-import type { RenderSettings } from './prompt';
+import { buildAnglePrompt, buildPrompt, buildRecolorPrompt, type RenderSettings } from './prompt';
 import { settle } from './usage';
 
+// render:  a new product photo from the uploaded photo(s)
+// angle:   back/side view; refs = [front task, back task?], primary = the angle photo when given
+// recolor: the output of refs[0] with only the base color changed to settings.garmentColor
+export type TaskKind = 'render' | 'angle' | 'recolor';
+
 export interface TaskInput {
-  primary: string; // key into the job's images
+  kind: TaskKind;
+  primary?: string; // key into the job's images
   layer?: string;
+  refs: number[]; // indexes of earlier tasks in the same job whose outputs this task uses
   settings: RenderSettings;
 }
 
 interface Task extends TaskInput {
+  index: number;
   status: 'pending' | 'running' | 'done' | 'failed';
   historyId?: string;
   error?: string;
+  output?: InputImage; // kept until the job finishes, for dependent tasks
 }
 
 interface Job {
@@ -29,12 +38,14 @@ const queue: { job: Job; task: Task }[] = [];
 let running = 0;
 const sourceThumbs = new Map<string, Promise<Buffer>>();
 
+const isFinished = (t: Task) => t.status === 'done' || t.status === 'failed';
+
 export function createJob(images: Map<string, InputImage>, tasks: TaskInput[]): Job {
   const job: Job = {
     id: randomUUID(),
     createdAt: Date.now(),
     images,
-    tasks: tasks.map((t) => ({ ...t, status: 'pending' })),
+    tasks: tasks.map((t, index) => ({ ...t, index, status: 'pending' })),
   };
   jobs.set(job.id, job);
   for (const task of job.tasks) queue.push({ job, task });
@@ -42,16 +53,36 @@ export function createJob(images: Map<string, InputImage>, tasks: TaskInput[]): 
   return job;
 }
 
+function finishJobIfDone(job: Job) {
+  if (!job.tasks.every(isFinished)) return;
+  job.images = null;
+  for (const t of job.tasks) delete t.output;
+  for (const key of [...sourceThumbs.keys()]) if (key.startsWith(job.id)) sourceThumbs.delete(key);
+}
+
 function pump() {
-  while (running < config.concurrency && queue.length) {
-    const next = queue.shift()!;
+  // Tasks whose dependencies failed can never run: fail them right away. Dependencies always
+  // come earlier in the queue, so one forward pass also fails whole chains.
+  for (let i = 0; i < queue.length; ) {
+    const { job, task } = queue[i];
+    if (task.refs.some((r) => job.tasks[r].status === 'failed')) {
+      queue.splice(i, 1);
+      task.status = 'failed';
+      task.error = 'dependency_failed';
+      settle(false).catch((e) => console.error('Usage update failed:', e));
+      finishJobIfDone(job);
+    } else {
+      i++;
+    }
+  }
+  while (running < config.concurrency) {
+    const idx = queue.findIndex(({ job, task }) => task.refs.every((r) => job.tasks[r].status === 'done'));
+    if (idx === -1) return;
+    const [next] = queue.splice(idx, 1);
     running++;
     runTask(next.job, next.task).finally(() => {
       running--;
-      if (next.job.tasks.every((t) => t.status === 'done' || t.status === 'failed')) {
-        next.job.images = null;
-        for (const key of [...sourceThumbs.keys()]) if (key.startsWith(next.job.id)) sourceThumbs.delete(key);
-      }
+      finishJobIfDone(next.job);
       pump();
     });
   }
@@ -63,14 +94,45 @@ function sourceThumb(job: Job, key: string, image: InputImage) {
   return sourceThumbs.get(cacheKey)!;
 }
 
+// The original photo shown next to a result in the history: the task's own photo,
+// otherwise the photo of the first task it depends on
+function sourceKey(job: Job, task: Task): string | undefined {
+  if (task.primary) return task.primary;
+  for (const r of task.refs) {
+    const key = sourceKey(job, job.tasks[r]);
+    if (key) return key;
+  }
+  return undefined;
+}
+
+function buildInputs(job: Job, task: Task): { inputs: InputImage[]; prompt: string } {
+  const images = job.images!;
+  const refs = task.refs.map((r) => job.tasks[r].output!);
+  if (task.kind === 'recolor') {
+    return { inputs: [refs[0]], prompt: buildRecolorPrompt(task.settings.garmentColor) };
+  }
+  if (task.kind === 'angle') {
+    const photo = task.primary ? images.get(task.primary) : undefined;
+    return {
+      inputs: [...(photo ? [photo] : []), ...refs],
+      prompt: buildAnglePrompt(task.settings, Boolean(photo), refs.length > 1),
+    };
+  }
+  const primary = images.get(task.primary!)!;
+  const layer = task.layer ? images.get(task.layer) : undefined;
+  return { inputs: layer ? [primary, layer] : [primary], prompt: buildPrompt(task.settings, Boolean(layer)) };
+}
+
 async function runTask(job: Job, task: Task) {
   task.status = 'running';
   let ok = false;
   try {
-    const primary = job.images!.get(task.primary)!;
-    const layer = task.layer ? job.images!.get(task.layer) : undefined;
-    const image = await generateImage(task.settings, primary, layer);
-    const item = await addItem(job.id, task.settings, image, await sourceThumb(job, task.primary, primary));
+    const { inputs, prompt } = buildInputs(job, task);
+    const image = await generateImage(task.settings, inputs, prompt);
+    task.output = { mimeType: image.mimeType, data: image.buffer.toString('base64') };
+    const key = sourceKey(job, task);
+    const thumb = key ? await sourceThumb(job, key, job.images!.get(key)!) : await makeSourceThumb(image.buffer);
+    const item = await addItem(job.id, task.settings, image, thumb);
     task.historyId = item.id;
     task.status = 'done';
     ok = true;
@@ -92,7 +154,7 @@ export function getJob(id: string) {
     total: job.tasks.length,
     done: count('done'),
     failed: count('failed'),
-    finished: job.tasks.every((t) => t.status === 'done' || t.status === 'failed'),
+    finished: job.tasks.every(isFinished),
     tasks: job.tasks.map((t) => ({ status: t.status, historyId: t.historyId, error: t.error })),
   };
 }
