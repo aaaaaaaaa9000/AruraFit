@@ -58,6 +58,7 @@ type ErrorCode =
   | 'rate_limited'
   | 'not_configured'
   | 'no_image_returned'
+  | 'quota_exceeded'
   | 'server_error';
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
@@ -67,6 +68,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   rate_limited: 429,
   not_configured: 503,
   no_image_returned: 502,
+  quota_exceeded: 503,
   server_error: 500,
 };
 
@@ -268,7 +270,9 @@ app.post('/api/render', rateLimit, async (req, res) => {
     return sendError(res, 'no_image_returned');
   } catch (error: any) {
     console.error('Render error:', error?.message || error);
-    return sendError(res, 'server_error');
+    // Gemini answers 429 RESOURCE_EXHAUSTED when the project's spend cap or quota is reached
+    const quota = error?.status === 429 || /RESOURCE_EXHAUSTED|spending cap|quota/i.test(String(error?.message));
+    return sendError(res, quota ? 'quota_exceeded' : 'server_error');
   }
 });
 

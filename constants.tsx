@@ -68,6 +68,7 @@ export const TRANSLATIONS = {
       rate_limited: "Too many renders in a short time. Please wait a minute and try again.",
       not_configured: "The server is not configured yet (missing Gemini API key).",
       no_image_returned: "The AI did not return an image. Try another photo or different settings.",
+      quota_exceeded: "The Gemini account has reached its spending cap or quota. Raise the cap in Google AI Studio (Spend) and try again.",
       server_error: "An error occurred during rendering. Please try again.",
       network: "Could not reach the server. Check your connection and try again."
     } as Record<string, string>
@@ -138,6 +139,7 @@ export const TRANSLATIONS = {
       rate_limited: "طلبات كثيرة في وقت قصير. انتظر دقيقة ثم حاول مرة أخرى.",
       not_configured: "السيرفر غير مُعد بعد (مفتاح Gemini غير موجود).",
       no_image_returned: "الذكاء الاصطناعي لم يرجّع صورة. جرّب صورة أخرى أو إعدادات مختلفة.",
+      quota_exceeded: "حساب Gemini وصل لحد الإنفاق أو الحصة المسموحة. ارفع الحد من Google AI Studio (Spend) وحاول تاني.",
       server_error: "حدث خطأ أثناء التجسيد. يرجى المحاولة مرة أخرى.",
       network: "تعذّر الوصول للسيرفر. تأكد من الاتصال وحاول مرة أخرى."
     } as Record<string, string>
