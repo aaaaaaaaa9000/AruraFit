@@ -25,6 +25,7 @@ const FIT_TYPES = ['slim', 'athletic', 'relaxed', 'plus'] as const;
 const LIGHTING_MODES = ['sunlight', 'night', 'office', 'studio'] as const;
 const LAYER_POSITIONS = ['under', 'over'] as const;
 const QUALITIES = ['standard', 'high'] as const;
+const DISPLAY_STYLES = ['ghost', 'flatlay'] as const;
 const NAMED_COLORS = ['Black', 'White', 'Red', 'Navy', 'Beige', 'Pink', 'Emerald'];
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -152,16 +153,9 @@ function buildPrompt(body: any, hasLayer: boolean): string {
   const layerPosition = oneOf(LAYER_POSITIONS, body?.layerPosition, 'under');
   const garmentColor = isAllowedColor(profile.garmentColor) ? profile.garmentColor : '';
   const measures = garment.measures.map((m) => `  - ${MEASURE_LINES[m](clampPercent(profile[m]))}`).join('\n');
+  const flatlay = oneOf(DISPLAY_STYLES, body?.displayStyle, 'ghost') === 'flatlay';
 
-  const sections = [
-    `Create a professional e-commerce "ghost mannequin" product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
-    `GARMENT TYPE: ${garment.en}. ${garment.guidance}
-  The photo is the source of truth: if anything in this description does not match the photo, follow the photo.`,
-    `FIDELITY (highest priority):
-  - This is a re-photograph of the provided product, not a new design. Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
-  - Sheer, lace and mesh fabrics keep the same transparency.
-  - Do not add, remove, simplify or invent anything: no extra jewelry, chains, straps, layers or accessories.
-  - Keep the original length and cut.`,
+  const ghostSections = [
     `GHOST MANNEQUIN EFFECT:
   - The garment is shaped as if worn by an invisible woman: a hollow 3D form with natural volume and folds.
   - Give every piece clear, rounded 3D volume as if filled by the body: cups and bust are rounded, hips are curved, pant legs and sleeves are filled out, with soft shading that shows depth. Never lay the garment flat.
@@ -174,17 +168,43 @@ ${measures}${
         ? '\n  - This garment is loose-fitting: the body only shows where the fabric naturally rests (shoulders, bust). Do not tighten it, cinch the waist or change its cut.'
         : ''
     }`,
+  ];
+  const flatlaySections = [
+    `FLAT LAY:
+  - The garment lies flat on the surface, photographed from directly above, neatly arranged, symmetrical and smoothed with no messy wrinkles.
+  - Sleeves, straps and ties are arranged naturally and fully visible. Sets are arranged as an outfit (top above bottoms, pieces side by side) without hiding important details.
+  - No body, mannequin, hanger, clips, hang tags, price stickers or props.`,
+  ];
+
+  const sections = [
+    `Create a professional e-commerce ${flatlay ? 'flat-lay' : '"ghost mannequin"'} product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
+    `GARMENT TYPE: ${garment.en}. ${garment.guidance}
+  The photo is the source of truth: if anything in this description does not match the photo, follow the photo.`,
+    `FIDELITY (highest priority):
+  - This is a re-photograph of the provided product, not a new design. Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
+  - Sheer, lace and mesh fabrics keep the same transparency.
+  - Do not add, remove, simplify or invent anything: no extra jewelry, chains, straps, layers or accessories.
+  - Keep the original length and cut.`,
+    ...(flatlay ? flatlaySections : ghostSections),
     garmentColor
       ? `COLOR CHANGE: Change only the main fabric base color to ${garmentColor}. Keep the print, lace pattern, embroidery and embellishment designs unchanged, and keep the fabric texture, sheen, shadows and highlights.`
       : 'COLOR: Keep the exact original colors; do not desaturate or shift them.',
     `LIGHTING: ${LIGHTING_DESCRIPTIONS[lighting]}`,
-    'BACKGROUND: Seamless pure white studio background with a soft natural contact shadow. Garment centered with comfortable margins, fully in frame.',
+    flatlay
+      ? 'BACKGROUND: Seamless pure white surface with a very soft, even shadow under the garment. Garment centered with comfortable margins, fully in frame.'
+      : 'BACKGROUND: Seamless pure white studio background with a soft natural contact shadow. Garment centered with comfortable margins, fully in frame.',
   ];
 
   if (hasLayer) {
-    sections.push(`LAYERING:
+    sections.push(
+      flatlay
+        ? `LAYERING:
+  - The second image is another women's garment, laid ${layerPosition === 'under' ? 'UNDER' : 'OVER'} the first one as a styled outfit, partly overlapping so both stay recognizable.
+  - Apply the same fidelity rules to both garments.`
+        : `LAYERING:
   - The second image is another women's garment, worn ${layerPosition === 'under' ? 'UNDER' : 'OVER'} the first one on the same invisible body.
-  - Apply the same fidelity rules to both garments; they must interact physically (overlaps, tucks, shadows).`);
+  - Apply the same fidelity rules to both garments; they must interact physically (overlaps, tucks, shadows).`
+    );
   }
   return sections.join('\n\n');
 }

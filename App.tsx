@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BodyProfile, StudioConfig, Language, LayerPosition, Quality } from './types';
+import { BodyProfile, StudioConfig, Language, LayerPosition, Quality, DisplayStyle } from './types';
 import { TRANSLATIONS, Icons } from './constants';
 import { GARMENT_TYPES, DEFAULT_GARMENT_TYPE, findGarmentType, type Measure } from './garmentTypes';
 import { GeminiService, RenderError, prepareImage } from './services/geminiService';
@@ -36,6 +36,8 @@ const App: React.FC = () => {
   const [profile, setProfile] = useState<BodyProfile>(DEFAULT_PROFILE);
   const [garmentType, setGarmentType] = useState<string>(DEFAULT_GARMENT_TYPE);
   const [quality, setQuality] = useState<Quality>('standard');
+  const [displayStyle, setDisplayStyle] = useState<DisplayStyle>('ghost');
+  const isFlatlay = displayStyle === 'flatlay';
 
   const [studio, setStudio] = useState<StudioConfig>({
     lighting: 'studio'
@@ -90,7 +92,7 @@ const App: React.FC = () => {
     const colorPart = (profile.garmentColor || 'original').replace('#', '');
     const link = document.createElement('a');
     link.href = resultImage;
-    link.download = `AruraFit-${garment.id}-${profile.fitType}-${colorPart}-${Date.now()}.${ext}`;
+    link.download = `AruraFit-${garment.id}-${isFlatlay ? 'flatlay' : profile.fitType}-${colorPart}-${Date.now()}.${ext}`;
     link.click();
   };
 
@@ -107,6 +109,7 @@ const App: React.FC = () => {
         studio, 
         garmentType,
         quality,
+        displayStyle,
         layerImage || undefined,
         layerPosition
       );
@@ -181,9 +184,28 @@ const App: React.FC = () => {
               ))}
             </select>
             <p className="text-[11px] text-gray-400">{t.garmentTypeHint}</p>
+
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block pt-3">{t.displayStyle}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['ghost', 'flatlay'] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDisplayStyle(d)}
+                  className={`py-2 px-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                    displayStyle === d
+                      ? 'bg-black text-white border-black shadow-md'
+                      : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
+                  }`}
+                >
+                  {d === 'ghost' ? t.styleGhost : t.styleFlatlay}
+                </button>
+              ))}
+            </div>
+            {isFlatlay && <p className="text-[11px] text-gray-400">{t.styleHint}</p>}
           </div>
 
           <div className="glass p-6 rounded-2xl space-y-6 shadow-sm border-gray-200">
+            {!isFlatlay && (<>
             <div className="flex items-center gap-2 border-b border-gray-100 pb-4">
               <Icons.Settings />
               <h2 className="font-bold flex-1">{t.settings}</h2>
@@ -246,8 +268,9 @@ const App: React.FC = () => {
                 ))}
               </div>
             </div>
+            </>)}
 
-            <div className="pt-4 border-t border-gray-50">
+            <div className={isFlatlay ? '' : 'pt-4 border-t border-gray-50'}>
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 block">{t.color}</label>
               <div className="flex flex-wrap gap-2 mb-4">
                 {COMMON_COLORS.map((c) => (
@@ -439,7 +462,7 @@ const App: React.FC = () => {
                     {t.creating}
                   </h3>
                   <p className="text-sm text-gray-500 mt-2 uppercase tracking-widest font-bold">
-                    {lang === 'ar' ? garment.ar : garment.en} · {t[profile.fitType]} {profile.garmentColor ? `| ${colorLabel(profile.garmentColor)}` : ''}
+                    {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]} {profile.garmentColor ? `| ${colorLabel(profile.garmentColor)}` : ''}
                   </p>
                 </div>
               </div>
@@ -479,7 +502,7 @@ const App: React.FC = () => {
                   
                   <div className="absolute top-6 start-6 sm:top-8 sm:start-8 flex flex-col gap-3">
                     <div className="bg-black text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl">
-                      {t.result}: {lang === 'ar' ? garment.ar : garment.en} · {t[profile.fitType]}{profile.garmentColor ? ` · ${colorLabel(profile.garmentColor)}` : ''}
+                      {t.result}: {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]}{profile.garmentColor ? ` · ${colorLabel(profile.garmentColor)}` : ''}
                     </div>
                   </div>
                   

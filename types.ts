@@ -20,3 +20,5 @@ export interface StudioConfig {
 export type LayerPosition = 'under' | 'over';
 
 export type Quality = 'standard' | 'high';
+
+export type DisplayStyle = 'ghost' | 'flatlay';
