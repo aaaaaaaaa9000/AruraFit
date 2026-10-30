@@ -6,6 +6,7 @@ export interface BodyProfile {
   chest: number; // 1-100
   shoulders: number; // 1-100
   waist: number; // 1-100
+  hips: number; // 1-100
   fitType: FitType;
   garmentColor?: string; // Named color from the palette or a #rrggbb hex
 }
@@ -17,3 +18,5 @@ export interface StudioConfig {
 }
 
 export type LayerPosition = 'under' | 'over';
+
+export type Quality = 'standard' | 'high';

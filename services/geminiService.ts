@@ -1,4 +1,4 @@
-import { BodyProfile, LayerPosition, StudioConfig } from "../types";
+import { BodyProfile, LayerPosition, Quality, StudioConfig } from "../types";
 
 // Error carrying a code the UI can translate (codes come from server.ts → ErrorCode)
 export class RenderError extends Error {
@@ -38,6 +38,8 @@ export class GeminiService {
     primaryImage: string,
     profile: BodyProfile,
     studio: StudioConfig,
+    garmentType: string,
+    quality: Quality,
     layerImage?: string,
     layerPosition: LayerPosition = 'under'
   ): Promise<string> {
@@ -52,6 +54,8 @@ export class GeminiService {
           primaryImage,
           profile,
           studio,
+          garmentType,
+          quality,
           layerImage,
           layerPosition,
         }),

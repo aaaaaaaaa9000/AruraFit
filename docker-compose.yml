@@ -6,7 +6,8 @@ services:
     environment:
       - NODE_ENV=production
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-image}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-flash-image}
+      - GEMINI_PRO_MODEL=${GEMINI_PRO_MODEL:-gemini-3-pro-image}
       - GEMINI_FALLBACK_MODEL=${GEMINI_FALLBACK_MODEL:-}
       - APP_USERNAME=${APP_USERNAME:-user}
       - APP_PASSWORD=${APP_PASSWORD}

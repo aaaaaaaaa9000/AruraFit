@@ -3,6 +3,7 @@ import path from 'path';
 import { timingSafeEqual } from 'crypto';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { findGarmentType, type Measure } from './garmentTypes';
 
 // Load environment variables from .env.local and .env (no-op in Docker)
 dotenv.config({ path: '.env.local', quiet: true });
@@ -11,7 +12,8 @@ dotenv.config({ quiet: true });
 const isProduction = process.env.NODE_ENV === 'production';
 const port = Number(process.env.PORT) || 3000;
 const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
-const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
+const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-image';
+const proModel = process.env.GEMINI_PRO_MODEL || 'gemini-3-pro-image';
 const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || '';
 const appUsername = process.env.APP_USERNAME || 'user';
 const appPassword = process.env.APP_PASSWORD || '';
@@ -22,16 +24,29 @@ const maxImageBytes = maxImageMb * 1024 * 1024;
 const FIT_TYPES = ['slim', 'athletic', 'relaxed', 'plus'] as const;
 const LIGHTING_MODES = ['sunlight', 'night', 'office', 'studio'] as const;
 const LAYER_POSITIONS = ['under', 'over'] as const;
+const QUALITIES = ['standard', 'high'] as const;
 const NAMED_COLORS = ['Black', 'White', 'Red', 'Navy', 'Beige', 'Pink', 'Emerald'];
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const FIT_DESCRIPTIONS: Record<(typeof FIT_TYPES)[number], string> = {
-  slim: 'FEMININE SLIM FIT: A slender female silhouette. The garment should tightly hug a petite female frame, emphasizing a high waist and narrow shoulders. Very delicate fabric tension.',
-  athletic:
-    'FEMININE ATHLETIC/HOURGLASS FIT: A toned female physique with a clear V-taper to the waist and slightly broader, defined feminine shoulders. Strong bust definition and a cinched waistline.',
-  relaxed:
-    "FEMININE OVERSIZED/BOXY FIT: Modern oversized women's aesthetic. The garment should drape loosely over a female frame, appearing stylishly large with soft, voluminous folds.",
-  plus: 'FEMININE PLUS SIZE / FULL FIGURE: A voluptuous female silhouette with realistic fuller curves. Emphasize a broader hip-to-waist ratio, a more prominent bust area, and a softer, rounded torso. Realistic stretching appropriate for plus-size garments.',
+  slim: 'Slim, petite female figure with narrow shoulders and a slender frame.',
+  athletic: 'Balanced, toned hourglass female figure.',
+  relaxed: 'Average female figure; the garment is worn relaxed with an easy, roomy drape.',
+  plus: 'Full-figured plus-size female body with natural fuller curves at bust, waist and hips.',
+};
+
+const LIGHTING_DESCRIPTIONS: Record<(typeof LIGHTING_MODES)[number], string> = {
+  studio: 'Soft, even studio lighting with neutral white balance and minimal shadows.',
+  sunlight: 'Warm natural daylight, soft directional light as if from a large window, gentle shadows.',
+  night: 'Warm evening ambience: lower-key warm light with deeper soft shadows and a subtle glow on the fabric.',
+  office: 'Cool, crisp neutral daylight, bright and clean.',
+};
+
+const MEASURE_LINES: Record<Measure, (v: number) => string> = {
+  shoulders: (v) => `Shoulder width: ${v}/100`,
+  chest: (v) => `Bust volume: ${v}/100`,
+  waist: (v) => `Waist definition: ${v}/100`,
+  hips: (v) => `Hip curve: ${v}/100`,
 };
 
 // Error codes are translated on the client (see constants.tsx → ERRORS)
@@ -131,53 +146,52 @@ function basicAuth(req: Request, res: Response, next: NextFunction) {
 
 function buildPrompt(body: any, hasLayer: boolean): string {
   const profile = body?.profile ?? {};
+  const garment = findGarmentType(body?.garmentType);
   const fitType = oneOf(FIT_TYPES, profile.fitType, 'athletic');
-  const lighting = oneOf(LIGHTING_MODES, body?.studio?.lighting, 'sunlight');
+  const lighting = oneOf(LIGHTING_MODES, body?.studio?.lighting, 'studio');
   const layerPosition = oneOf(LAYER_POSITIONS, body?.layerPosition, 'under');
   const garmentColor = isAllowedColor(profile.garmentColor) ? profile.garmentColor : '';
+  const measures = garment.measures.map((m) => `  - ${MEASURE_LINES[m](clampPercent(profile[m]))}`).join('\n');
 
-  const colorInstruction = garmentColor
-    ? `RECOLOR MANDATE: Change the primary garment's color strictly to ${garmentColor}. Maintain all fabric textures, shadows, and highlights but shift the base hue and saturation to match ${garmentColor} exactly.`
-    : '';
-
-  let prompt = `
-      ULTRA-STRICT GHOST MANNEQUIN RENDER - WOMEN'S FASHION ONLY.
-
-      CORE MANDATE:
-      - 100% INVISIBLE FEMALE MODEL: Render the garment as if worn by an invisible woman.
-      - SILHOUETTE: Must be EXCLUSIVELY FEMALE (waist-to-hip ratio, bust protrusion, feminine shoulder slope).
-      - NO HUMAN TRACES: Delete all skin, hands, feet, neck, or face. Total phantom effect.
-      - HOLLOW 3D SHELL: Show internal collar labels and inner back fabric through the openings.
-
-      ${colorInstruction}
-
-      SILHOUETTE SPECIFICATIONS (EXAGGERATED FEMININE FORM):
-      - PROFILE: ${FIT_DESCRIPTIONS[fitType]}
-      - Shoulder Breadth: ${clampPercent(profile.shoulders)}% female scale.
-      - Bust/Chest Volume: ${clampPercent(profile.chest)}% scale (emphasize 3D female bust curve).
-      - Waist Taper: ${clampPercent(profile.waist)}% scale (deep feminine waist curve).
-
-      LIGHTING & ENVIRONMENT:
-      - Lighting: ${lighting} professional fashion photography lighting.
-      - Background: Clean minimalist white studio.
-      - Cleanup: Remove all hangers, original background artifacts, and any visible mannequin parts.
-    `;
+  const sections = [
+    `Create a professional e-commerce "ghost mannequin" product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
+    `GARMENT TYPE: ${garment.en}. ${garment.guidance}`,
+    `FIDELITY (highest priority):
+  - Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
+  - Sheer, lace and mesh fabrics keep the same transparency.
+  - Do not add, remove, simplify or invent anything: no extra jewelry, chains, straps, layers or accessories.
+  - Keep the original length and cut.`,
+    `GHOST MANNEQUIN EFFECT:
+  - The garment is shaped as if worn by an invisible woman: a hollow 3D form with natural volume and folds.
+  - No skin, face, hands, legs or any body part. No mannequin, hanger, clips, hang tags or price stickers.
+  - Where openings allow (neckline, armholes), show the inside back of the garment.`,
+    `INVISIBLE BODY:
+  - Figure: ${FIT_DESCRIPTIONS[fitType]}
+${measures}${
+      garment.loose
+        ? '\n  - This garment is loose-fitting: the body only shows where the fabric naturally rests (shoulders, bust). Do not tighten it, cinch the waist or change its cut.'
+        : ''
+    }`,
+    garmentColor
+      ? `COLOR CHANGE: Change only the main fabric base color to ${garmentColor}. Keep the print, lace pattern, embroidery and embellishment designs unchanged, and keep the fabric texture, sheen, shadows and highlights.`
+      : 'COLOR: Keep the exact original colors; do not desaturate or shift them.',
+    `LIGHTING: ${LIGHTING_DESCRIPTIONS[lighting]}`,
+    'BACKGROUND: Seamless pure white studio background with a soft natural contact shadow. Garment centered with comfortable margins, fully in frame.',
+  ];
 
   if (hasLayer) {
-    prompt += `
-      COMPOSITE LAYERING:
-      - Integrate second women's garment ${layerPosition.toUpperCase()} the primary one.
-      - Both must adhere to the same female silhouette and interact physically.
-      `;
+    sections.push(`LAYERING:
+  - The second image is another women's garment, worn ${layerPosition === 'under' ? 'UNDER' : 'OVER'} the first one on the same invisible body.
+  - Apply the same fidelity rules to both garments; they must interact physically (overlaps, tucks, shadows).`);
   }
-  return prompt;
+  return sections.join('\n\n');
 }
 
 async function generate(modelName: string, parts: any[]) {
   return getAi().models.generateContent({
     model: modelName,
     contents: { parts },
-    config: { imageConfig: { aspectRatio: '3:4' } },
+    config: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } },
   });
 }
 
@@ -187,7 +201,7 @@ app.disable('x-powered-by');
 
 // Health check (registered before auth so Docker/Traefik can reach it)
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', hasApiKey: Boolean(apiKey), model });
+  res.json({ status: 'ok', hasApiKey: Boolean(apiKey), model, proModel });
 });
 
 app.use(basicAuth);
@@ -208,13 +222,15 @@ app.post('/api/render', rateLimit, async (req, res) => {
   if (layer) parts.push({ inlineData: layer });
   parts.push({ text: buildPrompt(req.body, Boolean(layer)) });
 
+  const selectedModel = oneOf(QUALITIES, req.body?.quality, 'standard') === 'high' ? proModel : model;
+
   try {
     let response;
     try {
-      response = await generate(model, parts);
+      response = await generate(selectedModel, parts);
     } catch (err: any) {
       if (!fallbackModel) throw err;
-      console.warn(`Model ${model} failed (${err?.message || err}), retrying with ${fallbackModel}`);
+      console.warn(`Model ${selectedModel} failed (${err?.message || err}), retrying with ${fallbackModel}`);
       response = await generate(fallbackModel, parts);
     }
 
@@ -263,7 +279,7 @@ if (isProduction) {
 
 app.listen(port, '0.0.0.0', () => {
   console.log(
-    `AruraFit listening on :${port} | model=${model}${fallbackModel ? ` fallback=${fallbackModel}` : ''} | ` +
+    `AruraFit listening on :${port} | model=${model} pro=${proModel}${fallbackModel ? ` fallback=${fallbackModel}` : ''} | ` +
       `rateLimit=${rateLimitPerMinute}/min | auth=${appPassword ? 'on' : 'off'} | apiKey=${apiKey ? 'set' : 'MISSING'}`
   );
 });

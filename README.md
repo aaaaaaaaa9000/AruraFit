@@ -28,7 +28,8 @@ npm run dev                  # http://localhost:3000
 | المتغير | الافتراضي | الوصف |
 |---|---|---|
 | `GEMINI_API_KEY` | - | **مطلوب.** مفتاح Gemini API |
-| `GEMINI_MODEL` | `gemini-2.5-flash-image` | موديل توليد الصور |
+| `GEMINI_MODEL` | `gemini-3.1-flash-image` | موديل توليد الصور (الجودة العادية) |
+| `GEMINI_PRO_MODEL` | `gemini-3-pro-image` | الموديل لما تختار "جودة عالية" (أبطأ وتكلفته حوالي الضعف) |
 | `GEMINI_FALLBACK_MODEL` | فاضي | موديل احتياطي لو الأول فشل (اختياري) |
 | `APP_USERNAME` | `user` | اسم المستخدم لو الباسورد مفعّل |
 | `APP_PASSWORD` | فاضي | لو اتحط، الموقع كله بيطلب باسورد (Basic Auth). فاضي = الموقع عام |
