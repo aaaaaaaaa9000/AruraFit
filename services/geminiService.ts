@@ -1,4 +1,4 @@
-import { BodyProfile, DisplayStyle, LayerPosition, Quality, StudioConfig } from "../types";
+import { AspectRatio, BodyProfile, DisplayStyle, LayerPosition, Quality, StudioConfig } from "../types";
 import type { RenderSettings } from "../server/prompt";
 
 // Error carrying a code the UI can translate (codes come from server.ts → ErrorCode and server/gemini.ts)
@@ -58,6 +58,8 @@ export interface RenderRequest {
   garmentType: string;
   quality: Quality;
   displayStyle: DisplayStyle;
+  aspectRatio: AspectRatio;
+  background: string;
   layerPosition?: LayerPosition;
 }
 
@@ -141,7 +143,8 @@ export function downloadUrl(url: string, filename: string) {
 export function historyFilename(item: HistoryItem) {
   const s = item.settings;
   const style = s.displayStyle === 'flatlay' ? 'flatlay' : s.fitType;
+  const ratio = (s.aspectRatio || '3:4').replace(':', 'x');
   const color = (s.garmentColor || 'original').replace('#', '');
   const stamp = new Date(item.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  return `AruraFit-${s.garmentType}-${style}-${color}-${stamp}.${item.ext}`;
+  return `AruraFit-${s.garmentType}-${style}-${color}-${ratio}-${stamp}.${item.ext}`;
 }

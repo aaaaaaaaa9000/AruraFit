@@ -5,6 +5,8 @@ export const LIGHTING_MODES = ['sunlight', 'night', 'office', 'studio'] as const
 export const LAYER_POSITIONS = ['under', 'over'] as const;
 export const QUALITIES = ['standard', 'high'] as const;
 export const DISPLAY_STYLES = ['ghost', 'flatlay'] as const;
+export const ASPECT_RATIOS = ['3:4', '1:1', '4:5', '9:16'] as const;
+const BACKGROUND_PRESETS: Record<string, string> = { white: 'pure white (#FFFFFF)', gray: 'light gray (#EDEDED)' };
 const NAMED_COLORS = ['Black', 'White', 'Red', 'Navy', 'Beige', 'Pink', 'Emerald'];
 
 const FIT_DESCRIPTIONS: Record<(typeof FIT_TYPES)[number], string> = {
@@ -50,6 +52,8 @@ export interface RenderSettings {
   fitType: (typeof FIT_TYPES)[number];
   lighting: (typeof LIGHTING_MODES)[number];
   layerPosition: (typeof LAYER_POSITIONS)[number];
+  aspectRatio: (typeof ASPECT_RATIOS)[number];
+  background: string; // 'white' | 'gray' | '#rrggbb'
   garmentColor: string;
   measures: Record<Measure, number>;
 }
@@ -63,6 +67,11 @@ export function parseSettings(raw: any): RenderSettings {
     fitType: oneOf(FIT_TYPES, profile.fitType, 'athletic'),
     lighting: oneOf(LIGHTING_MODES, raw?.studio?.lighting, 'studio'),
     layerPosition: oneOf(LAYER_POSITIONS, raw?.layerPosition, 'under'),
+    aspectRatio: oneOf(ASPECT_RATIOS, raw?.aspectRatio, '3:4'),
+    background:
+      typeof raw?.background === 'string' && (raw.background in BACKGROUND_PRESETS || /^#[0-9a-fA-F]{6}$/.test(raw.background))
+        ? raw.background
+        : 'white',
     garmentColor: isAllowedColor(profile.garmentColor) ? profile.garmentColor : '',
     measures: {
       shoulders: clampPercent(profile.shoulders),
@@ -77,6 +86,13 @@ export function buildPrompt(s: RenderSettings, hasLayer: boolean): string {
   const garment = findGarmentType(s.garmentType);
   const measures = garment.measures.map((m) => `  - ${MEASURE_LINES[m](s.measures[m])}`).join('\n');
   const flatlay = s.displayStyle === 'flatlay';
+  const background = BACKGROUND_PRESETS[s.background] ?? `solid color ${s.background}`;
+  const framing =
+    s.aspectRatio === '9:16'
+      ? 'Tall vertical frame: center the garment with extra space above and below.'
+      : s.aspectRatio === '1:1'
+        ? 'Square frame: center the garment with balanced margins on all sides.'
+        : 'Garment centered with comfortable margins.';
 
   const ghostSections = [
     `GHOST MANNEQUIN EFFECT:
@@ -114,8 +130,8 @@ ${measures}${
       : 'COLOR: Keep the exact original colors; do not desaturate or shift them.',
     `LIGHTING: ${LIGHTING_DESCRIPTIONS[s.lighting]}`,
     flatlay
-      ? 'BACKGROUND: Seamless pure white surface with a very soft, even shadow under the garment. Garment centered with comfortable margins, fully in frame.'
-      : 'BACKGROUND: Seamless pure white studio background with a soft natural contact shadow. Garment centered with comfortable margins, fully in frame.',
+      ? `BACKGROUND: Seamless ${background} surface with a very soft, even shadow under the garment. ${framing} Fully in frame.`
+      : `BACKGROUND: Seamless ${background} studio background with a soft natural contact shadow. ${framing} Fully in frame.`,
   ];
 
   if (hasLayer) {
