@@ -1,108 +1,63 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
 import { timingSafeEqual } from 'crypto';
-import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
-import { findGarmentType, type Measure } from './garmentTypes';
+import { config } from './server/config';
+import { parseSettings } from './server/prompt';
+import type { InputImage } from './server/gemini';
+import { createJob, getJob, type TaskInput } from './server/jobs';
+import {
+  ID_PATTERN,
+  deleteAll,
+  deleteItems,
+  getItem,
+  imagePath,
+  initHistory,
+  listItems,
+  setStarred,
+  sourcePath,
+  storageStats,
+  thumbPath,
+} from './server/history';
+import { initUsage, reserve, usageStats } from './server/usage';
 
-// Load environment variables from .env.local and .env (no-op in Docker)
-dotenv.config({ path: '.env.local', quiet: true });
-dotenv.config({ quiet: true });
-
-const isProduction = process.env.NODE_ENV === 'production';
-const port = Number(process.env.PORT) || 3000;
-const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
-const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-image';
-const proModel = process.env.GEMINI_PRO_MODEL || 'gemini-3-pro-image';
-const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || '';
-const appUsername = process.env.APP_USERNAME || 'user';
-const appPassword = process.env.APP_PASSWORD || '';
-const rateLimitPerMinute = Number(process.env.RATE_LIMIT_PER_MINUTE) || 5;
-const maxImageMb = Number(process.env.MAX_IMAGE_MB) || 8;
-const maxImageBytes = maxImageMb * 1024 * 1024;
-
-const FIT_TYPES = ['slim', 'athletic', 'relaxed', 'plus'] as const;
-const LIGHTING_MODES = ['sunlight', 'night', 'office', 'studio'] as const;
-const LAYER_POSITIONS = ['under', 'over'] as const;
-const QUALITIES = ['standard', 'high'] as const;
-const DISPLAY_STYLES = ['ghost', 'flatlay'] as const;
-const NAMED_COLORS = ['Black', 'White', 'Red', 'Navy', 'Beige', 'Pink', 'Emerald'];
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const maxImageBytes = config.maxImageMb * 1024 * 1024;
 
-const FIT_DESCRIPTIONS: Record<(typeof FIT_TYPES)[number], string> = {
-  slim: 'Slim, petite female figure with narrow shoulders and a slender frame.',
-  athletic: 'Balanced, toned hourglass female figure.',
-  relaxed: 'Average female figure; the garment is worn relaxed with an easy, roomy drape.',
-  plus: 'Full-figured plus-size female body with natural fuller curves at bust, waist and hips.',
-};
-
-const LIGHTING_DESCRIPTIONS: Record<(typeof LIGHTING_MODES)[number], string> = {
-  studio: 'Soft, even studio lighting with neutral white balance and minimal shadows.',
-  sunlight: 'Warm natural daylight, soft directional light as if from a large window, gentle shadows.',
-  night: 'Warm evening ambience: lower-key warm light with deeper soft shadows and a subtle glow on the fabric.',
-  office: 'Cool, crisp neutral daylight, bright and clean.',
-};
-
-const MEASURE_LINES: Record<Measure, (v: number) => string> = {
-  shoulders: (v) => `Shoulder width: ${v}/100`,
-  chest: (v) => `Bust volume: ${v}/100`,
-  waist: (v) => `Waist definition: ${v}/100`,
-  hips: (v) => `Hip curve: ${v}/100`,
-};
-
-// Error codes are translated on the client (see constants.tsx → ERRORS)
+// Error codes are translated on the client (see constants.tsx → errors)
 type ErrorCode =
   | 'invalid_input'
   | 'invalid_image'
   | 'image_too_large'
+  | 'job_too_large'
   | 'rate_limited'
+  | 'limit_daily'
+  | 'limit_weekly'
   | 'not_configured'
-  | 'no_image_returned'
-  | 'quota_exceeded'
-  | 'server_error';
+  | 'not_found';
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
   invalid_input: 400,
   invalid_image: 400,
   image_too_large: 413,
+  job_too_large: 413,
   rate_limited: 429,
+  limit_daily: 429,
+  limit_weekly: 429,
   not_configured: 503,
-  no_image_returned: 502,
-  quota_exceeded: 503,
-  server_error: 500,
+  not_found: 404,
 };
 
-function sendError(res: Response, code: ErrorCode) {
-  return res.status(ERROR_STATUS[code]).json({ error: code });
-}
-
-let aiClient: GoogleGenAI | null = null;
-function getAi(): GoogleGenAI {
-  if (!aiClient) aiClient = new GoogleGenAI({ apiKey });
-  return aiClient;
+function sendError(res: Response, code: ErrorCode, extra: Record<string, unknown> = {}) {
+  return res.status(ERROR_STATUS[code]).json({ error: code, ...extra });
 }
 
 // Parse and validate a data URI image. Returns null when the input is not an accepted image.
-function parseImage(value: unknown): { mimeType: string; data: string } | 'too_large' | null {
+function parseImage(value: unknown): InputImage | 'too_large' | null {
   if (typeof value !== 'string') return null;
   const match = value.match(/^data:([a-z/+-]+);base64,([A-Za-z0-9+/=]+)$/);
   if (!match || !IMAGE_MIME_TYPES.includes(match[1])) return null;
   if (Math.floor((match[2].length * 3) / 4) > maxImageBytes) return 'too_large';
   return { mimeType: match[1], data: match[2] };
-}
-
-function clampPercent(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 50;
-  return Math.min(100, Math.max(1, Math.round(n)));
-}
-
-function isAllowedColor(value: unknown): value is string {
-  return typeof value === 'string' && (NAMED_COLORS.includes(value) || /^#[0-9a-fA-F]{6}$/.test(value));
-}
-
-function oneOf<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
-  return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
 // Simple in-memory per-IP rate limiter (single container, so no shared store needed)
@@ -111,7 +66,7 @@ function rateLimit(req: Request, res: Response, next: NextFunction) {
   const now = Date.now();
   const key = req.ip || 'unknown';
   const recent = (requestLog.get(key) || []).filter((t) => now - t < 60_000);
-  if (recent.length >= rateLimitPerMinute) {
+  if (recent.length >= config.rateLimitPerMinute) {
     res.setHeader('Retry-After', '60');
     return sendError(res, 'rate_limited');
   }
@@ -134,12 +89,12 @@ function safeEqual(a: string, b: string): boolean {
 
 // Optional Basic Auth, enabled only when APP_PASSWORD is set
 function basicAuth(req: Request, res: Response, next: NextFunction) {
-  if (!appPassword) return next();
+  if (!config.appPassword) return next();
   const header = req.headers.authorization || '';
   if (header.startsWith('Basic ')) {
     const decoded = Buffer.from(header.slice(6), 'base64').toString();
     const sep = decoded.indexOf(':');
-    if (sep !== -1 && safeEqual(decoded.slice(0, sep), appUsername) && safeEqual(decoded.slice(sep + 1), appPassword)) {
+    if (sep !== -1 && safeEqual(decoded.slice(0, sep), config.appUsername) && safeEqual(decoded.slice(sep + 1), config.appPassword)) {
       return next();
     }
   }
@@ -147,77 +102,8 @@ function basicAuth(req: Request, res: Response, next: NextFunction) {
   return res.status(401).send('Authentication required');
 }
 
-function buildPrompt(body: any, hasLayer: boolean): string {
-  const profile = body?.profile ?? {};
-  const garment = findGarmentType(body?.garmentType);
-  const fitType = oneOf(FIT_TYPES, profile.fitType, 'athletic');
-  const lighting = oneOf(LIGHTING_MODES, body?.studio?.lighting, 'studio');
-  const layerPosition = oneOf(LAYER_POSITIONS, body?.layerPosition, 'under');
-  const garmentColor = isAllowedColor(profile.garmentColor) ? profile.garmentColor : '';
-  const measures = garment.measures.map((m) => `  - ${MEASURE_LINES[m](clampPercent(profile[m]))}`).join('\n');
-  const flatlay = oneOf(DISPLAY_STYLES, body?.displayStyle, 'ghost') === 'flatlay';
-
-  const ghostSections = [
-    `GHOST MANNEQUIN EFFECT:
-  - The garment is shaped as if worn by an invisible woman: a hollow 3D form with natural volume and folds.
-  - Give every piece clear, rounded 3D volume as if filled by the body: cups and bust are rounded, hips are curved, pant legs and sleeves are filled out, with soft shading that shows depth. Never lay the garment flat.
-  - No skin, face, hands, legs or any body part. No mannequin, hanger, clips, hang tags or price stickers.
-  - Where openings allow (neckline, armholes), show the inside back of the garment.`,
-    `INVISIBLE BODY:
-  - Figure: ${FIT_DESCRIPTIONS[fitType]}
-${measures}${
-      garment.loose
-        ? '\n  - This garment is loose-fitting: the body only shows where the fabric naturally rests (shoulders, bust). Do not tighten it, cinch the waist or change its cut.'
-        : ''
-    }`,
-  ];
-  const flatlaySections = [
-    `FLAT LAY:
-  - The garment lies flat on the surface, photographed from directly above, neatly arranged, symmetrical and smoothed with no messy wrinkles.
-  - Sleeves, straps and ties are arranged naturally and fully visible. Sets are arranged as an outfit (top above bottoms, pieces side by side) without hiding important details.
-  - No body, mannequin, hanger, clips, hang tags, price stickers or props.`,
-  ];
-
-  const sections = [
-    `Create a professional e-commerce ${flatlay ? 'flat-lay' : '"ghost mannequin"'} product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
-    `GARMENT TYPE: ${garment.en}. ${garment.guidance}
-  The photo is the source of truth: if anything in this description does not match the photo, follow the photo.`,
-    `FIDELITY (highest priority):
-  - This is a re-photograph of the provided product, not a new design. Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
-  - Sheer, lace and mesh fabrics keep the same transparency.
-  - Do not add, remove, simplify or invent anything: no extra jewelry, chains, straps, layers or accessories.
-  - Keep the original length and cut.`,
-    ...(flatlay ? flatlaySections : ghostSections),
-    garmentColor
-      ? `COLOR CHANGE: Change only the main fabric base color to ${garmentColor}. Keep the print, lace pattern, embroidery and embellishment designs unchanged, and keep the fabric texture, sheen, shadows and highlights.`
-      : 'COLOR: Keep the exact original colors; do not desaturate or shift them.',
-    `LIGHTING: ${LIGHTING_DESCRIPTIONS[lighting]}`,
-    flatlay
-      ? 'BACKGROUND: Seamless pure white surface with a very soft, even shadow under the garment. Garment centered with comfortable margins, fully in frame.'
-      : 'BACKGROUND: Seamless pure white studio background with a soft natural contact shadow. Garment centered with comfortable margins, fully in frame.',
-  ];
-
-  if (hasLayer) {
-    sections.push(
-      flatlay
-        ? `LAYERING:
-  - The second image is another women's garment, laid ${layerPosition === 'under' ? 'UNDER' : 'OVER'} the first one as a styled outfit, partly overlapping so both stay recognizable.
-  - Apply the same fidelity rules to both garments.`
-        : `LAYERING:
-  - The second image is another women's garment, worn ${layerPosition === 'under' ? 'UNDER' : 'OVER'} the first one on the same invisible body.
-  - Apply the same fidelity rules to both garments; they must interact physically (overlaps, tucks, shadows).`
-    );
-  }
-  return sections.join('\n\n');
-}
-
-async function generate(modelName: string, parts: any[]) {
-  return getAi().models.generateContent({
-    model: modelName,
-    contents: { parts },
-    config: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } },
-  });
-}
+await initHistory();
+await initUsage();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -225,65 +111,110 @@ app.disable('x-powered-by');
 
 // Health check (registered before auth so Docker/Traefik can reach it)
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', hasApiKey: Boolean(apiKey), model, proModel });
+  res.json({ status: 'ok', hasApiKey: Boolean(config.apiKey), model: config.model, proModel: config.proModel });
 });
 
 app.use(basicAuth);
+app.use('/api', express.json({ limit: `${config.maxJobPayloadMb}mb` }));
 
-// Two images as base64 (~4/3 overhead) plus the rest of the payload
-app.use('/api', express.json({ limit: `${Math.ceil(maxImageMb * 2 * 1.4) + 1}mb` }));
-
-// API endpoint for Ghost Mannequin rendering
-app.post('/api/render', rateLimit, async (req, res) => {
-  const primary = parseImage(req.body?.primaryImage);
-  const layer = req.body?.layerImage ? parseImage(req.body.layerImage) : undefined;
-
-  if (primary === 'too_large' || layer === 'too_large') return sendError(res, 'image_too_large');
-  if (!primary || layer === null) return sendError(res, 'invalid_image');
-  if (!apiKey) return sendError(res, 'not_configured');
-
-  const parts: any[] = [{ inlineData: primary }];
-  if (layer) parts.push({ inlineData: layer });
-  parts.push({ text: buildPrompt(req.body, Boolean(layer)) });
-
-  const selectedModel = oneOf(QUALITIES, req.body?.quality, 'standard') === 'high' ? proModel : model;
-
-  try {
-    let response;
-    try {
-      response = await generate(selectedModel, parts);
-    } catch (err: any) {
-      if (!fallbackModel) throw err;
-      console.warn(`Model ${selectedModel} failed (${err?.message || err}), retrying with ${fallbackModel}`);
-      response = await generate(fallbackModel, parts);
-    }
-
-    for (const candidate of response.candidates ?? []) {
-      for (const part of candidate.content?.parts ?? []) {
-        if (part.inlineData?.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          return res.json({ imageUrl: `data:${mime};base64,${part.inlineData.data}` });
-        }
-      }
-    }
-    console.warn('Gemini returned no image. Finish reason:', response.candidates?.[0]?.finishReason);
-    return sendError(res, 'no_image_returned');
-  } catch (error: any) {
-    console.error('Render error:', error?.message || error);
-    // Gemini answers 429 RESOURCE_EXHAUSTED when the project's spend cap or quota is reached
-    const quota = error?.status === 429 || /RESOURCE_EXHAUSTED|spending cap|quota/i.test(String(error?.message));
-    return sendError(res, quota ? 'quota_exceeded' : 'server_error');
-  }
+app.get('/api/usage', (_req, res) => {
+  res.json({ ...usageStats(), storage: storageStats() });
 });
+
+// Queue one or more renders. Body: { images: { [key]: dataUri }, tasks: [{ primary, layer?, ...settings }] }
+app.post('/api/jobs', rateLimit, (req, res) => {
+  const rawImages = req.body?.images;
+  const rawTasks = req.body?.tasks;
+  if (!rawImages || typeof rawImages !== 'object' || !Array.isArray(rawTasks) || rawTasks.length === 0) {
+    return sendError(res, 'invalid_input');
+  }
+  if (rawTasks.length > config.maxTasksPerJob) return sendError(res, 'job_too_large', { max: config.maxTasksPerJob });
+  if (!config.apiKey) return sendError(res, 'not_configured');
+
+  const images = new Map<string, InputImage>();
+  for (const [key, value] of Object.entries(rawImages)) {
+    const parsed = parseImage(value);
+    if (parsed === 'too_large') return sendError(res, 'image_too_large');
+    if (!parsed) return sendError(res, 'invalid_image');
+    images.set(key, parsed);
+  }
+
+  const tasks: TaskInput[] = [];
+  for (const raw of rawTasks) {
+    if (!images.has(raw?.primary) || (raw?.layer && !images.has(raw.layer))) return sendError(res, 'invalid_input');
+    tasks.push({ primary: raw.primary, layer: raw.layer || undefined, settings: parseSettings(raw) });
+  }
+
+  const blocked = reserve(tasks.length);
+  if (blocked) return sendError(res, blocked.limit, { remaining: blocked.remaining });
+
+  const job = createJob(images, tasks);
+  res.status(202).json({ jobId: job.id, total: tasks.length });
+});
+
+app.get('/api/jobs/:id', (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return sendError(res, 'not_found');
+  res.json(job);
+});
+
+app.get('/api/history', (req, res) => {
+  const days = Number(req.query.days) || undefined;
+  const items = listItems({
+    garmentType: typeof req.query.type === 'string' && req.query.type ? req.query.type : undefined,
+    days,
+    starred: req.query.starred === '1',
+  });
+  res.json({ items, storage: storageStats() });
+});
+
+app.get('/api/history/:id', (req, res) => {
+  const item = getItem(String(req.params.id));
+  if (!item) return sendError(res, 'not_found');
+  res.json(item);
+});
+
+const sendHistoryFile = (pick: (id: string) => string | null) => (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const file = ID_PATTERN.test(id) && getItem(id) ? pick(id) : null;
+  if (!file) return sendError(res, 'not_found');
+  // Private: images sit behind the app password, so shared caches must not keep them
+  res.setHeader('Cache-Control', 'private, max-age=2592000, immutable');
+  res.sendFile(file, { cacheControl: false }, (err) => {
+    if (err && !res.headersSent) sendError(res, 'not_found');
+  });
+};
+app.get('/api/history/:id/image', sendHistoryFile((id) => imagePath(getItem(id)!)));
+app.get('/api/history/:id/thumb', sendHistoryFile(thumbPath));
+app.get('/api/history/:id/source', sendHistoryFile(sourcePath));
+
+app.post('/api/history/:id/star', async (req, res) => {
+  const item = await setStarred(String(req.params.id), Boolean(req.body?.starred));
+  if (!item) return sendError(res, 'not_found');
+  res.json(item);
+});
+
+app.post('/api/history/delete', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown) => typeof id === 'string') : [];
+  if (!ids.length) return sendError(res, 'invalid_input');
+  res.json({ deleted: await deleteItems(ids), storage: storageStats() });
+});
+
+app.post('/api/history/delete-all', async (req, res) => {
+  if (req.body?.confirm !== true) return sendError(res, 'invalid_input');
+  res.json({ deleted: await deleteAll(), storage: storageStats() });
+});
+
+app.use('/api', (_req, res) => sendError(res, 'not_found'));
 
 // Malformed / oversized JSON bodies
 app.use('/api', (err: any, _req: Request, res: Response, next: NextFunction) => {
-  if (err?.type === 'entity.too.large') return sendError(res, 'image_too_large');
+  if (err?.type === 'entity.too.large') return sendError(res, 'job_too_large', { max: config.maxTasksPerJob });
   if (err?.type === 'entity.parse.failed') return sendError(res, 'invalid_input');
   next(err);
 });
 
-if (isProduction) {
+if (config.isProduction) {
   const clientDir = path.resolve(process.cwd(), 'dist/client');
   app.use(
     '/assets',
@@ -303,9 +234,12 @@ if (isProduction) {
   app.use(vite.middlewares);
 }
 
-app.listen(port, '0.0.0.0', () => {
+app.listen(config.port, '0.0.0.0', () => {
+  const s = usageStats();
   console.log(
-    `AruraFit listening on :${port} | model=${model} pro=${proModel}${fallbackModel ? ` fallback=${fallbackModel}` : ''} | ` +
-      `rateLimit=${rateLimitPerMinute}/min | auth=${appPassword ? 'on' : 'off'} | apiKey=${apiKey ? 'set' : 'MISSING'}`
+    `AruraFit listening on :${config.port} | model=${config.model} pro=${config.proModel}${
+      config.fallbackModel ? ` fallback=${config.fallbackModel}` : ''
+    } | limits=${s.dailyLimit}/day ${s.weeklyLimit}/week | history=${config.historyMaxMb}MB/${config.historyMaxDays}d at ${config.dataDir} | ` +
+      `auth=${config.appPassword ? 'on' : 'off'} | apiKey=${config.apiKey ? 'set' : 'MISSING'}`
   );
 });
