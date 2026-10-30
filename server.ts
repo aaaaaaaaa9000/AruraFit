@@ -155,9 +155,10 @@ function buildPrompt(body: any, hasLayer: boolean): string {
 
   const sections = [
     `Create a professional e-commerce "ghost mannequin" product photo of the women's garment in the ${hasLayer ? 'first ' : ''}image.`,
-    `GARMENT TYPE: ${garment.en}. ${garment.guidance}`,
+    `GARMENT TYPE: ${garment.en}. ${garment.guidance}
+  The photo is the source of truth: if anything in this description does not match the photo, follow the photo.`,
     `FIDELITY (highest priority):
-  - Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
+  - This is a re-photograph of the provided product, not a new design. Reproduce exactly the same garment as in the photo. Keep every design detail identical: color, print/pattern scale and placement, lace and embroidery motifs, sequins, beads, stones, trims, ruffles, bows, buttons, zips, straps and hardware, seams and logos.
   - Sheer, lace and mesh fabrics keep the same transparency.
   - Do not add, remove, simplify or invent anything: no extra jewelry, chains, straps, layers or accessories.
   - Keep the original length and cut.`,

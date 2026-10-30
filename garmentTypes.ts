@@ -44,7 +44,7 @@ export const GARMENT_TYPES: GarmentType[] = [
     en: 'Lingerie',
     measures: ['shoulders', 'chest', 'waist', 'hips'],
     guidance:
-      'Lingerie piece (nightdress, babydoll, chemise or lingerie set). Keep the exact length. Tulle, chiffon and lace stay translucent with a soft natural drape, never stiff. If a matching panty is part of the set, show it in place.',
+      'Lingerie piece. Keep the exact length and only the pieces present in the photo. Sheer fabrics stay translucent with a soft natural drape, never stiff.',
   },
   {
     id: 'mesh_lingerie',
@@ -52,7 +52,7 @@ export const GARMENT_TYPES: GarmentType[] = [
     en: 'Mesh lingerie',
     measures: ['shoulders', 'chest', 'waist', 'hips'],
     guidance:
-      'Fishnet / mesh lingerie (bodystocking, mesh dress or stockings). Keep the exact net size and pattern with open holes showing the white background through them. Do not add any lining or solid fabric.',
+      'Mesh / net lingerie. Keep exactly the same shape, neckline, sleeves and net or lace pattern as in the photo. Open holes show the white background through them. Do not add any lining or solid fabric.',
   },
   {
     id: 'costume_lingerie',
@@ -60,7 +60,7 @@ export const GARMENT_TYPES: GarmentType[] = [
     en: 'Costume lingerie',
     measures: ['shoulders', 'chest', 'waist', 'hips'],
     guidance:
-      'Costume / role-play lingerie set. Include every piece and accessory shown in the photo (for example collar, apron, cuffs, headpiece), each in its worn position. Do not add or drop pieces.',
+      'Costume / role-play lingerie set. Include exactly the pieces and accessories present in the photo, each in its worn position. Do not add or drop pieces.',
   },
   {
     id: 'swim_bodysuit',
@@ -70,11 +70,12 @@ export const GARMENT_TYPES: GarmentType[] = [
     guidance: 'One-piece lingerie bodysuit / teddy, fitted from bust to hips with the leg openings cut exactly as shown.',
   },
   {
-    id: 'bodysuit',
+    id: 'nightgown',
     ar: 'كاشات حريمي',
-    en: 'Bodysuits & tops',
-    measures: ['shoulders', 'chest', 'waist'],
-    guidance: 'Women\'s fitted bodysuit / top. Keep the neckline, sleeve length and hem exactly as shown.',
+    en: 'Home nightgowns',
+    measures: ['shoulders', 'chest', 'waist', 'hips'],
+    guidance:
+      'Home nightgown / slip dress (one piece, usually spaghetti straps or short sleeves, knee length or longer). Keep the exact length, neckline and strap style. Printed text, graphics and lace trims (for example at the hem) must stay exactly as in the photo, with the same lettering, size and position. The fabric falls softly over the invisible body.',
   },
   {
     id: 'swimwear',
@@ -99,7 +100,7 @@ export const GARMENT_TYPES: GarmentType[] = [
     en: 'Belly-dance costume',
     measures: ['shoulders', 'chest', 'waist', 'hips'],
     guidance:
-      'Belly-dance costume (top, hip belt and skirt or dress as shown). Reproduce every sequin, bead, coin, fringe and tassel precisely with their sparkle. Fringes hang naturally with gravity.',
+      'Belly-dance costume. Reproduce exactly the embellishments that are in the photo, in the same places and with their sparkle; never swap them for other kinds of decoration. Anything hanging falls naturally with gravity.',
   },
   {
     id: 'robe',
@@ -125,7 +126,7 @@ export const GARMENT_TYPES: GarmentType[] = [
     en: 'Pajamas',
     measures: ['shoulders', 'chest', 'waist', 'hips'],
     loose: true,
-    guidance: 'Pajama set: top and bottoms (pants or shorts) shown together as worn, top above bottoms, relaxed fit.',
+    guidance: 'Pajama set: top and bottoms shown together as worn, top above bottoms, relaxed fit. Keep the exact length of each piece.',
   },
   {
     id: 'tracksuit',
@@ -134,7 +135,7 @@ export const GARMENT_TYPES: GarmentType[] = [
     measures: ['shoulders', 'chest', 'waist', 'hips'],
     loose: true,
     guidance:
-      'Tracksuit set (3-4 pieces such as jacket, top and pants). Show every piece layered as worn: jacket open over the top, pants below.',
+      'Tracksuit set (several pieces). Show every piece from the photo layered as worn, outer layers open over inner ones, bottoms below.',
   },
   {
     id: 'bermuda',
