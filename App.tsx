@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { BodyProfile, StudioConfig, Language, LayerPosition, Quality, DisplayStyle } from './types';
 import { TRANSLATIONS, Icons } from './constants';
 import { GARMENT_TYPES, DEFAULT_GARMENT_TYPE, findGarmentType, type Measure } from './garmentTypes';
-import { GeminiService, RenderError, prepareImage } from './services/geminiService';
+import { RenderError, prepareImage, api, downloadUrl, historyFilename, historyUrls, type HistoryItem, type UsageStats } from './services/geminiService';
+import HistoryView from './HistoryView';
 
 const COMMON_COLORS = [
   { name: 'Black', hex: '#000000' },
@@ -31,7 +32,11 @@ const App: React.FC = () => {
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [layerImage, setLayerImage] = useState<string | null>(null);
   const [layerPosition, setLayerPosition] = useState<LayerPosition>('under');
-  const [resultImage, setResultImage] = useState<string | null>(null);
+  const [resultItem, setResultItem] = useState<HistoryItem | null>(null);
+  const resultImage = resultItem ? historyUrls(resultItem.id).image : null;
+  const [view, setView] = useState<'studio' | 'history'>('studio');
+  const [usage, setUsage] = useState<UsageStats | null>(null);
+  const [progress, setProgress] = useState<'queued' | 'running' | null>(null);
   
   const [profile, setProfile] = useState<BodyProfile>(DEFAULT_PROFILE);
   const [garmentType, setGarmentType] = useState<string>(DEFAULT_GARMENT_TYPE);
@@ -53,10 +58,22 @@ const App: React.FC = () => {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
 
+  const refreshUsage = () => api.usage().then(setUsage).catch(() => {});
+  useEffect(() => {
+    refreshUsage();
+  }, []);
+
   const isCustomColor = Boolean(profile.garmentColor && !COMMON_COLORS.find(c => c.name === profile.garmentColor));
   const colorLabel = (color: string) => t.colors[color] || color;
   const garment = findGarmentType(garmentType);
-  const errorMessage = errorCode ? (t.errors[errorCode] || t.errors.server_error) : null;
+  const [errorRemaining, setErrorRemaining] = useState<number | undefined>(undefined);
+  const errorMessage = errorCode
+    ? (t.errors[errorCode] || t.errors.server_error).replace('{remaining}', String(errorRemaining ?? 0))
+    : null;
+  const showError = (err: unknown, fallback: string) => {
+    setErrorCode(err instanceof RenderError ? err.code : fallback);
+    setErrorRemaining(err instanceof RenderError ? err.remaining : undefined);
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'primary' | 'layer') => {
     const file = e.target.files?.[0];
@@ -72,9 +89,9 @@ const App: React.FC = () => {
       } else {
         setLayerImage(dataUrl);
       }
-      setResultImage(null);
+      setResultItem(null);
     } catch (err) {
-      setErrorCode(err instanceof RenderError ? err.code : 'unreadable_image');
+      showError(err, 'unreadable_image');
     } finally {
       setPreparing(false);
     }
@@ -82,42 +99,48 @@ const App: React.FC = () => {
 
   const clearLayer = () => {
     setLayerImage(null);
-    setResultImage(null);
+    setResultItem(null);
   };
 
   const downloadResult = () => {
-    if (!resultImage) return;
-    const mime = resultImage.slice(5, resultImage.indexOf(';'));
-    const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-    const colorPart = (profile.garmentColor || 'original').replace('#', '');
-    const link = document.createElement('a');
-    link.href = resultImage;
-    link.download = `AruraFit-${garment.id}-${isFlatlay ? 'flatlay' : profile.fitType}-${colorPart}-${Date.now()}.${ext}`;
-    link.click();
+    if (resultItem) downloadUrl(historyUrls(resultItem.id).image, historyFilename(resultItem));
   };
 
   const runRender = async () => {
     if (!sourceImage) return;
     
     setLoading(true);
+    setProgress('queued');
     setErrorCode(null);
 
     try {
-      const result = await GeminiService.renderGhostMannequin(
-        sourceImage, 
-        profile, 
-        studio, 
-        garmentType,
-        quality,
-        displayStyle,
-        layerImage || undefined,
-        layerPosition
-      );
-      setResultImage(result);
+      const images: Record<string, string> = { primary: sourceImage };
+      if (layerImage) images.layer = layerImage;
+      const { jobId } = await api.createJob(images, [
+        {
+          primary: 'primary',
+          layer: layerImage ? 'layer' : undefined,
+          profile,
+          studio,
+          garmentType,
+          quality,
+          displayStyle,
+          layerPosition,
+        },
+      ]);
+      const job = await api.waitForJob(jobId, (j) => setProgress(j.tasks[0]?.status === 'pending' ? 'queued' : 'running'));
+      const task = job.tasks[0];
+      if (task.status === 'done' && task.historyId) {
+        setResultItem(await api.historyItem(task.historyId));
+      } else {
+        setErrorCode(task.error || 'server_error');
+      }
     } catch (err) {
-      setErrorCode(err instanceof RenderError ? err.code : 'server_error');
+      showError(err, 'server_error');
     } finally {
       setLoading(false);
+      setProgress(null);
+      refreshUsage();
     }
   };
 
@@ -146,6 +169,27 @@ const App: React.FC = () => {
         </button>
       </nav>
 
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
+        <div role="tablist" className="inline-flex bg-gray-100 rounded-full p-1">
+          {(['studio', 'history'] as const).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`px-5 py-2 rounded-full text-xs font-bold transition-all ${
+                view === v ? 'bg-black text-white shadow' : 'text-gray-500 hover:text-black'
+              }`}
+            >
+              {v === 'studio' ? t.tabStudio : t.tabHistory}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'history' ? (
+        <HistoryView t={t} lang={lang} usage={usage} onChanged={refreshUsage} />
+      ) : (
       <main className="flex-1 flex flex-col lg:flex-row p-4 sm:p-6 gap-6 max-w-7xl mx-auto w-full">
         <section className="flex-1 space-y-6">
           <div className="space-y-4">
@@ -434,8 +478,15 @@ const App: React.FC = () => {
             ) : (
               <Icons.Render />
             )}
-            {loading ? t.generating : t.generate}
+            {loading ? (progress === 'queued' ? t.queued : t.generating) : t.generate}
           </button>
+          {usage && (
+            <p className="text-[11px] text-gray-500 text-center">
+              {t.usageToday} <span dir="ltr">{usage.today}/{usage.dailyLimit}</span>
+              {' · '}
+              {t.usageWeek} <span dir="ltr">{usage.week}/{usage.weeklyLimit}</span>
+            </p>
+          )}
         </section>
 
         <section className="flex-[1.5] flex flex-col gap-4">
@@ -521,6 +572,7 @@ const App: React.FC = () => {
           </div>
         </section>
       </main>
+      )}
 
       <footer className="p-8 text-center text-[10px] text-gray-400 uppercase tracking-[0.3em] font-bold border-t border-gray-50">
         &copy; {new Date().getFullYear()} {t.footer}

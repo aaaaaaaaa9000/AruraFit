@@ -14,6 +14,9 @@ ENV PORT=3000
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# History images and usage counters live here (mounted as a volume in docker-compose.yml)
+RUN mkdir -p /app/data && chown node:node /app/data
+ENV DATA_DIR=/app/data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

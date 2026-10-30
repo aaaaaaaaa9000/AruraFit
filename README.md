@@ -34,8 +34,14 @@ npm run dev                  # http://localhost:3000
 | `GEMINI_FALLBACK_MODEL` | فاضي | موديل احتياطي لو الأول فشل (اختياري) |
 | `APP_USERNAME` | `user` | اسم المستخدم لو الباسورد مفعّل |
 | `APP_PASSWORD` | فاضي | لو اتحط، الموقع كله بيطلب باسورد (Basic Auth). فاضي = الموقع عام |
-| `RATE_LIMIT_PER_MINUTE` | `5` | أقصى عدد صور لكل IP في الدقيقة |
+| `DAILY_IMAGE_LIMIT` | `300` | أقصى عدد صور في اليوم (بتوقيت القاهرة). الصور الناجحة بس هي اللي بتتحسب |
+| `WEEKLY_IMAGE_LIMIT` | `600` | أقصى عدد صور في آخر 7 أيام |
+| `HISTORY_MAX_MB` | `2048` | أقصى مساحة للسجل. لما تتملي، الأقدم بيتمسح الأول |
+| `HISTORY_MAX_DAYS` | `30` | الصور اللي من غير نجمة بتتمسح بعد عدد الأيام ده |
+| `GEMINI_CONCURRENCY` | `2` | كام صورة بتتعمل في نفس الوقت |
+| `RATE_LIMIT_PER_MINUTE` | `10` | أقصى عدد طلبات توليد لكل IP في الدقيقة |
 | `MAX_IMAGE_MB` | `8` | أقصى حجم لكل صورة مرفوعة (الصور بتتصغّر في المتصفح لـ 1536px قبل الرفع) |
+| `DATA_DIR` | `data` (في Docker: `/app/data`) | مكان حفظ السجل والعدّادات. في Docker متخزن في volume اسمه `arurafit-data` فمش بيضيع مع التحديث |
 | `PORT` | `3000` | البورت |
 | `APP_DOMAIN` | `arurafit.aaaaaaaaa9000.cloud` | الدومين اللي Traefik بيستخدمه في `docker-compose.yml` |
 

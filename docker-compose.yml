@@ -11,8 +11,15 @@ services:
       - GEMINI_FALLBACK_MODEL=${GEMINI_FALLBACK_MODEL:-}
       - APP_USERNAME=${APP_USERNAME:-user}
       - APP_PASSWORD=${APP_PASSWORD}
-      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-5}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-10}
       - MAX_IMAGE_MB=${MAX_IMAGE_MB:-8}
+      - DAILY_IMAGE_LIMIT=${DAILY_IMAGE_LIMIT:-300}
+      - WEEKLY_IMAGE_LIMIT=${WEEKLY_IMAGE_LIMIT:-600}
+      - HISTORY_MAX_MB=${HISTORY_MAX_MB:-2048}
+      - HISTORY_MAX_DAYS=${HISTORY_MAX_DAYS:-30}
+      - GEMINI_CONCURRENCY=${GEMINI_CONCURRENCY:-2}
+    volumes:
+      - arurafit-data:/app/data
     logging:
       driver: "json-file"
       options:
@@ -26,6 +33,9 @@ services:
       - "traefik.http.routers.ai-arurafit.tls.certresolver=letsencrypt"
       - "traefik.http.services.ai-arurafit.loadbalancer.server.port=3000"
       - "traefik.docker.network=automation-stack_automation-network"
+
+volumes:
+  arurafit-data:
 
 networks:
   default:
