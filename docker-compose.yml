@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    container_name: ai-app-arurafit
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-image}
+      - GEMINI_FALLBACK_MODEL=${GEMINI_FALLBACK_MODEL:-}
+      - APP_USERNAME=${APP_USERNAME:-user}
+      - APP_PASSWORD=${APP_PASSWORD}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-5}
+      - MAX_IMAGE_MB=${MAX_IMAGE_MB:-8}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai-arurafit.rule=Host(`${APP_DOMAIN:-arurafit.aaaaaaaaa9000.cloud}`)"
+      - "traefik.http.routers.ai-arurafit.entrypoints=websecure"
+      - "traefik.http.routers.ai-arurafit.tls=true"
+      - "traefik.http.routers.ai-arurafit.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ai-arurafit.loadbalancer.server.port=3000"
+      - "traefik.docker.network=automation-stack_automation-network"
+
+networks:
+  default:
+    name: automation-stack_automation-network
+    external: true

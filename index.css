@@ -1,0 +1,16 @@
+@import "tailwindcss";
+@source not "./dist";
+@source not "./node_modules";
+
+body {
+  font-family: 'Inter', 'Noto Sans Arabic', sans-serif;
+  background-color: #f9f9f9;
+  color: #111;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
