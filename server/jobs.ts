@@ -1,14 +1,16 @@
+import fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { config } from './config';
 import { generateImage, RenderFailure, type InputImage } from './gemini';
-import { addItem, makeSourceThumb } from './history';
-import { buildAnglePrompt, buildPrompt, buildRecolorPrompt, type RenderSettings } from './prompt';
+import { addItem, getItem, imagePath, makeSourceThumb, sourcePath } from './history';
+import { buildAnglePrompt, buildEditPrompt, buildPrompt, buildRecolorPrompt, type RenderSettings } from './prompt';
 import { settle } from './usage';
 
 // render:  a new product photo from the uploaded photo(s)
 // angle:   back/side view; refs = [front task, back task?], primary = the angle photo when given
 // recolor: the output of refs[0] with only the base color changed to settings.garmentColor
-export type TaskKind = 'render' | 'angle' | 'recolor';
+// edit:    an existing history image changed by a free-text instruction
+export type TaskKind = 'render' | 'angle' | 'recolor' | 'edit';
 
 export interface TaskInput {
   kind: TaskKind;
@@ -16,6 +18,8 @@ export interface TaskInput {
   layer?: string;
   refs: number[]; // indexes of earlier tasks in the same job whose outputs this task uses
   settings: RenderSettings;
+  sourceHistoryId?: string; // edit only
+  instruction?: string; // edit only
 }
 
 interface Task extends TaskInput {
@@ -123,16 +127,28 @@ function buildInputs(job: Job, task: Task): { inputs: InputImage[]; prompt: stri
   return { inputs: layer ? [primary, layer] : [primary], prompt: buildPrompt(task.settings, Boolean(layer)) };
 }
 
+async function runEdit(job: Job, task: Task) {
+  const parent = getItem(task.sourceHistoryId!);
+  if (!parent) throw new RenderFailure('server_error');
+  const [source, thumb] = await Promise.all([fs.readFile(imagePath(parent)), fs.readFile(sourcePath(parent.id))]);
+  const image = await generateImage(task.settings, [{ mimeType: parent.mimeType, data: source.toString('base64') }], buildEditPrompt(task.instruction!));
+  return { image, item: await addItem(job.id, task.settings, image, thumb, { parentId: parent.id, instruction: task.instruction }) };
+}
+
+async function runGeneration(job: Job, task: Task) {
+  const { inputs, prompt } = buildInputs(job, task);
+  const image = await generateImage(task.settings, inputs, prompt);
+  const key = sourceKey(job, task);
+  const thumb = key ? await sourceThumb(job, key, job.images!.get(key)!) : await makeSourceThumb(image.buffer);
+  return { image, item: await addItem(job.id, task.settings, image, thumb) };
+}
+
 async function runTask(job: Job, task: Task) {
   task.status = 'running';
   let ok = false;
   try {
-    const { inputs, prompt } = buildInputs(job, task);
-    const image = await generateImage(task.settings, inputs, prompt);
+    const { image, item } = task.kind === 'edit' ? await runEdit(job, task) : await runGeneration(job, task);
     task.output = { mimeType: image.mimeType, data: image.buffer.toString('base64') };
-    const key = sourceKey(job, task);
-    const thumb = key ? await sourceThumb(job, key, job.images!.get(key)!) : await makeSourceThumb(image.buffer);
-    const item = await addItem(job.id, task.settings, image, thumb);
     task.historyId = item.id;
     task.status = 'done';
     ok = true;

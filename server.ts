@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import path from 'path';
 import { timingSafeEqual } from 'crypto';
 import { config } from './server/config';
-import { parseSettings } from './server/prompt';
+import { QUALITIES, oneOf, parseSettings, sanitizeInstruction } from './server/prompt';
 import type { InputImage } from './server/gemini';
 import { createJob, getJob, type TaskInput } from './server/jobs';
 import {
@@ -142,6 +142,15 @@ app.post('/api/jobs', rateLimit, (req, res) => {
   // Each task may depend on earlier tasks (refs), which keeps the job a simple ordered DAG
   const tasks: TaskInput[] = [];
   for (const [index, raw] of rawTasks.entries()) {
+    // Edit: re-render an existing history image from a text instruction, keeping its settings
+    if (raw?.kind === 'edit') {
+      const parent = typeof raw.sourceHistoryId === 'string' ? getItem(raw.sourceHistoryId) : undefined;
+      const instruction = sanitizeInstruction(raw.instruction);
+      if (!parent || !instruction) return sendError(res, 'invalid_input');
+      const quality = oneOf(QUALITIES, raw.quality, parent.settings.quality);
+      tasks.push({ kind: 'edit', refs: [], settings: { ...parent.settings, quality }, sourceHistoryId: parent.id, instruction });
+      continue;
+    }
     const kind = raw?.kind === 'angle' || raw?.kind === 'recolor' ? raw.kind : 'render';
     const refs: number[] = Array.isArray(raw?.refs) ? raw.refs : [];
     const settings = parseSettings(raw);

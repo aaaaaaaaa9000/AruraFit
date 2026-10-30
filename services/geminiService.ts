@@ -74,6 +74,14 @@ export interface JobTask extends RenderRequest {
   approximate?: boolean;
 }
 
+// Re-render an existing history image from a text instruction
+export interface EditTask {
+  kind: 'edit';
+  sourceHistoryId: string;
+  instruction: string;
+  quality?: Quality;
+}
+
 export interface JobStatus {
   id: string;
   total: number;
@@ -91,6 +99,8 @@ export interface HistoryItem {
   ext: string;
   bytes: number;
   starred: boolean;
+  parentId?: string;
+  instruction?: string;
 }
 
 export interface StorageStats {
@@ -116,7 +126,7 @@ export const historyUrls = (id: string) => ({
 
 export const api = {
   // Queue renders: each task names its primary/layer image by key and carries its own settings
-  createJob: (images: Record<string, string>, tasks: JobTask[]) =>
+  createJob: (images: Record<string, string>, tasks: (JobTask | EditTask)[]) =>
     postJson<{ jobId: string; total: number }>('/api/jobs', { images, tasks }),
   getJob: (id: string) => request<JobStatus>(`/api/jobs/${id}`),
   historyItem: (id: string) => request<HistoryItem>(`/api/history/${id}`),
