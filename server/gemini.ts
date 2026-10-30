@@ -28,11 +28,11 @@ function getAi(): GoogleGenAI {
   return aiClient;
 }
 
-async function callModel(model: string, parts: any[]) {
+async function callModel(model: string, parts: any[], aspectRatio: string) {
   return getAi().models.generateContent({
     model,
     contents: { parts },
-    config: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } },
+    config: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio } },
   });
 }
 
@@ -47,12 +47,12 @@ export async function generateImage(settings: RenderSettings, primary: InputImag
   try {
     let response;
     try {
-      response = await callModel(model, parts);
+      response = await callModel(model, parts, settings.aspectRatio);
     } catch (err: any) {
       if (!config.fallbackModel) throw err;
       console.warn(`Model ${model} failed (${err?.message || err}), retrying with ${config.fallbackModel}`);
       model = config.fallbackModel;
-      response = await callModel(model, parts);
+      response = await callModel(model, parts, settings.aspectRatio);
     }
 
     for (const candidate of response.candidates ?? []) {

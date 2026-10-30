@@ -22,3 +22,5 @@ export type LayerPosition = 'under' | 'over';
 export type Quality = 'standard' | 'high';
 
 export type DisplayStyle = 'ghost' | 'flatlay';
+
+export type AspectRatio = '3:4' | '1:1' | '4:5' | '9:16';
