@@ -180,6 +180,27 @@ export function buildAnglePrompt(s: RenderSettings, hasPhoto: boolean, hasBackRe
   return buildPrompt(s, false, intro, [reference]);
 }
 
+export const MAX_INSTRUCTION_CHARS = 300;
+
+// Normalize a free-text edit request: single line, no control characters or quote fences, bounded length
+export function sanitizeInstruction(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/"{3,}/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_INSTRUCTION_CHARS);
+}
+
+// Apply the shop owner's text request to an existing product photo (one input image)
+export function buildEditPrompt(instruction: string): string {
+  return `Edit the provided e-commerce product photo according to this request from the shop owner (it may be written in Arabic):
+"""${instruction}"""
+Apply only what is asked. Keep everything else identical: the garment's design, print, lace, embellishments, colors, shape, size and framing, the lighting and the background, unless the request explicitly asks to change them.
+The result must stay a clean product photo: no people, body parts, mannequin, added text or watermarks.`;
+}
+
 // Change only the base color of an already generated product photo (one input image)
 export function buildRecolorPrompt(color: string): string {
   return `Edit the provided product photo. Change ONLY the main fabric base color of the garment to ${color}.

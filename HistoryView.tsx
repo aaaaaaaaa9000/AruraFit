@@ -265,6 +265,9 @@ const HistoryView: React.FC<Props> = ({ t, lang, usage, onChanged }) => {
                   <div><span className="font-bold">{t.colorLabel}:</span> <span dir="ltr">{t.colors[open.settings.garmentColor] || open.settings.garmentColor}</span></div>
                 )}
                 <div><span className="font-bold">{t.dateLabel}:</span> {dateLabel(open.createdAt)}</div>
+                {open.instruction && (
+                  <div className="break-words"><span className="font-bold">{t.instructionLabel}:</span> {open.instruction}</div>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

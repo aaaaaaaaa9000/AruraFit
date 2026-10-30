@@ -155,6 +155,46 @@ const App: React.FC = () => {
     if (resultItem) downloadUrl(historyUrls(resultItem.id).image, historyFilename(resultItem));
   };
 
+  const [editText, setEditText] = useState('');
+  const [editing, setEditing] = useState(false);
+
+  // Text edit of the shown result: saved as a new version right after it in the strip
+  const runEdit = async () => {
+    const instruction = editText.trim();
+    if (!resultItem || !instruction) return;
+    setEditing(true);
+    setErrorCode(null);
+    setPartialNote(null);
+    try {
+      const { jobId } = await api.createJob({}, [{ kind: 'edit', sourceHistoryId: resultItem.id, instruction, quality }]);
+      const task = (await api.waitForJob(jobId)).tasks[0];
+      if (task.status === 'done' && task.historyId) {
+        const item = await api.historyItem(task.historyId);
+        const at = activeResult + 1;
+        setResults((prev) => [...prev.slice(0, at), item, ...prev.slice(at)]);
+        setActiveResult(at);
+        setEditText('');
+      } else {
+        setErrorCode(task.error || 'server_error');
+      }
+    } catch (err) {
+      showError(err, 'server_error');
+    } finally {
+      setEditing(false);
+      refreshUsage();
+    }
+  };
+
+  const undoEdit = async () => {
+    const parentId = resultItem?.parentId;
+    if (!parentId) return;
+    const existing = results.findIndex((r) => r.id === parentId);
+    if (existing !== -1) return setActiveResult(existing);
+    const parent = await api.historyItem(parentId).catch(() => null);
+    if (!parent) return setErrorCode('not_found');
+    setResults((prev) => [...prev.slice(0, activeResult), parent, ...prev.slice(activeResult)]);
+  };
+
   const toggleResultStar = async () => {
     if (!resultItem) return;
     const updated = await api.star(resultItem.id, !resultItem.starred).catch(() => null);
@@ -287,7 +327,7 @@ const App: React.FC = () => {
         <HistoryView t={t} lang={lang} usage={usage} onChanged={refreshUsage} />
       ) : (
       <main className="flex-1 flex flex-col lg:flex-row p-4 sm:p-6 gap-6 max-w-7xl mx-auto w-full">
-        <section className="flex-1 space-y-6">
+        <section className="flex-1 min-w-0 space-y-6">
           <div className="space-y-4">
             <button 
               onClick={() => primaryInputRef.current?.click()}
@@ -747,7 +787,7 @@ const App: React.FC = () => {
           )}
         </section>
 
-        <section className="flex-[1.5] flex flex-col gap-4">
+        <section className="flex-[1.5] min-w-0 flex flex-col gap-4">
           <div className="flex-1 glass rounded-3xl overflow-hidden relative min-h-[420px] sm:min-h-[500px] flex items-center justify-center bg-gray-50 border border-gray-100 shadow-inner">
             {!sourceImage && !loading && (
               <div className="text-center p-8">
@@ -761,14 +801,14 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {loading && (
+            {(loading || editing) && (
               <div className="absolute inset-0 z-10 glass flex flex-col items-center justify-center gap-6 text-center p-12">
                 <div className="relative">
                   <div className="w-20 h-20 border-4 border-black/10 border-t-black rounded-full animate-spin"></div>
                 </div>
                 <div>
                   <h3 className="text-xl font-bold tracking-tight">
-                    {t.creating}
+                    {editing ? t.editing : t.creating}
                   </h3>
                   <p className="text-sm text-gray-500 mt-2 uppercase tracking-widest font-bold">
                     {lang === 'ar' ? garment.ar : garment.en} · {isFlatlay ? t.styleFlatlay : t[profile.fitType]} | {orderedColors.map(colorLabel).join('، ')}
@@ -821,7 +861,7 @@ const App: React.FC = () => {
 
                   <div className="absolute top-6 start-6 sm:top-8 sm:start-8 flex flex-col gap-3">
                     <div className="bg-black text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl">
-                      {t.result}: {resultItem ? `${angleLabel(resultItem)} · ${colorLabel(resultItem.settings.garmentColor)}` : ''}
+                      {t.result}: {resultItem ? `${angleLabel(resultItem)} · ${colorLabel(resultItem.settings.garmentColor)}${resultItem.instruction ? ` · ${t.editedBadge}` : ''}` : ''}
                     </div>
                   </div>
                   
@@ -858,12 +898,63 @@ const App: React.FC = () => {
                 >
                   <img src={historyUrls(r.id).thumb} alt="" className="w-full h-full object-contain" />
                   {r.starred && <span className="absolute top-1 end-1 text-amber-500 text-sm leading-none">★</span>}
+                  {r.instruction && <span className="absolute top-1 start-1 bg-blue-600 text-white rounded px-1 text-[8px] font-bold">{t.editedBadge}</span>}
                   <span className="absolute bottom-1 inset-x-1 bg-white/90 rounded px-1 text-[9px] font-bold flex items-center gap-1 truncate">
                     <span className="w-2.5 h-2.5 rounded-full border border-gray-300 shrink-0" style={{ backgroundColor: colorSwatch(r.settings.garmentColor) }} />
                     {angleLabel(r)}
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {resultItem && (
+            <div className="glass rounded-2xl p-4 space-y-3 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="edit-text" className="text-xs font-bold text-gray-500">{t.editTitle}</label>
+                {resultItem.parentId && (
+                  <button onClick={undoEdit} className="text-[11px] font-bold text-gray-500 hover:text-black hover:underline">
+                    ↶ {t.undoEdit}
+                  </button>
+                )}
+              </div>
+              {resultItem.instruction && (
+                <p className="text-[11px] text-blue-700 bg-blue-50 rounded-lg px-3 py-1.5 break-words">
+                  {t.instructionLabel}: {resultItem.instruction}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {t.editChips.map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => setEditText(chip)}
+                    className="px-2.5 py-1 rounded-full border border-gray-200 bg-white text-[11px] font-semibold text-gray-600 hover:border-black"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                id="edit-text"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                maxLength={300}
+                rows={2}
+                placeholder={t.editPlaceholder}
+                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-black resize-none"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] text-gray-400">{t.editHint}</p>
+                <button
+                  onClick={runEdit}
+                  disabled={!editText.trim() || editing || loading}
+                  className={`shrink-0 px-5 py-2 rounded-full text-xs font-bold ${
+                    !editText.trim() || editing || loading ? 'bg-gray-100 text-gray-400' : 'bg-black text-white hover:bg-gray-800'
+                  }`}
+                >
+                  {editing ? t.editing : t.editButton}
+                </button>
+              </div>
             </div>
           )}
         </section>

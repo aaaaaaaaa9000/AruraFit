@@ -15,6 +15,8 @@ export interface HistoryItem {
   mimeType: string;
   bytes: number; // image + thumbnail + source thumbnail
   starred: boolean;
+  parentId?: string; // set when this image is a text edit of another history item
+  instruction?: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -66,7 +68,8 @@ export async function addItem(
   jobId: string,
   settings: RenderSettings,
   image: { buffer: Buffer; mimeType: string; model: string },
-  sourceThumb: Buffer
+  sourceThumb: Buffer,
+  extra: Pick<HistoryItem, 'parentId' | 'instruction'> = {}
 ): Promise<HistoryItem> {
   const id = randomUUID();
   const ext = image.mimeType === 'image/png' ? 'png' : image.mimeType === 'image/webp' ? 'webp' : 'jpg';
@@ -81,6 +84,7 @@ export async function addItem(
     mimeType: image.mimeType,
     bytes: image.buffer.length + thumb.length + sourceThumb.length,
     starred: false,
+    ...extra,
   };
   await Promise.all([
     fs.writeFile(imagePath(item), image.buffer),
