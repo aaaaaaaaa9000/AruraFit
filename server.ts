@@ -139,10 +139,24 @@ app.post('/api/jobs', rateLimit, (req, res) => {
     images.set(key, parsed);
   }
 
+  // Each task may depend on earlier tasks (refs), which keeps the job a simple ordered DAG
   const tasks: TaskInput[] = [];
-  for (const raw of rawTasks) {
-    if (!images.has(raw?.primary) || (raw?.layer && !images.has(raw.layer))) return sendError(res, 'invalid_input');
-    tasks.push({ primary: raw.primary, layer: raw.layer || undefined, settings: parseSettings(raw) });
+  for (const [index, raw] of rawTasks.entries()) {
+    const kind = raw?.kind === 'angle' || raw?.kind === 'recolor' ? raw.kind : 'render';
+    const refs: number[] = Array.isArray(raw?.refs) ? raw.refs : [];
+    const settings = parseSettings(raw);
+    const hasPrimary = typeof raw?.primary === 'string' && images.has(raw.primary);
+    const valid =
+      refs.every((r) => Number.isInteger(r) && r >= 0 && r < index) &&
+      (!raw?.primary || hasPrimary) &&
+      (!raw?.layer || images.has(raw.layer)) &&
+      (kind === 'render'
+        ? hasPrimary && refs.length === 0
+        : kind === 'recolor'
+          ? refs.length === 1 && Boolean(settings.garmentColor)
+          : settings.angle !== 'front' && refs.length >= 1 && refs.length <= 2 && (hasPrimary || settings.approximate));
+    if (!valid) return sendError(res, 'invalid_input');
+    tasks.push({ kind, primary: hasPrimary ? raw.primary : undefined, layer: raw?.layer || undefined, refs, settings });
   }
 
   const blocked = reserve(tasks.length);

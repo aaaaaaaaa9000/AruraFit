@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { config } from './config';
-import { buildPrompt, type RenderSettings } from './prompt';
+import type { RenderSettings } from './prompt';
 
 export interface InputImage {
   mimeType: string;
@@ -36,12 +36,11 @@ async function callModel(model: string, parts: any[], aspectRatio: string) {
   });
 }
 
-export async function generateImage(settings: RenderSettings, primary: InputImage, layer?: InputImage): Promise<GeneratedImage> {
+// Images are passed in the order the prompt refers to them
+export async function generateImage(settings: RenderSettings, inputs: InputImage[], prompt: string): Promise<GeneratedImage> {
   if (!config.apiKey) throw new RenderFailure('not_configured');
 
-  const parts: any[] = [{ inlineData: primary }];
-  if (layer) parts.push({ inlineData: layer });
-  parts.push({ text: buildPrompt(settings, Boolean(layer)) });
+  const parts: any[] = [...inputs.map((inlineData) => ({ inlineData })), { text: prompt }];
 
   let model = settings.quality === 'high' ? config.proModel : config.model;
   try {

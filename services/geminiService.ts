@@ -63,6 +63,17 @@ export interface RenderRequest {
   layerPosition?: LayerPosition;
 }
 
+// render: from uploaded photos; angle: back/side view built on earlier results (refs);
+// recolor: an earlier result (refs[0]) with only the base color changed
+export interface JobTask extends RenderRequest {
+  kind: 'render' | 'angle' | 'recolor';
+  primary?: string;
+  layer?: string;
+  refs?: number[];
+  angle?: 'front' | 'back' | 'side';
+  approximate?: boolean;
+}
+
 export interface JobStatus {
   id: string;
   total: number;
@@ -105,7 +116,7 @@ export const historyUrls = (id: string) => ({
 
 export const api = {
   // Queue renders: each task names its primary/layer image by key and carries its own settings
-  createJob: (images: Record<string, string>, tasks: (RenderRequest & { primary: string; layer?: string })[]) =>
+  createJob: (images: Record<string, string>, tasks: JobTask[]) =>
     postJson<{ jobId: string; total: number }>('/api/jobs', { images, tasks }),
   getJob: (id: string) => request<JobStatus>(`/api/jobs/${id}`),
   historyItem: (id: string) => request<HistoryItem>(`/api/history/${id}`),
@@ -144,7 +155,8 @@ export function historyFilename(item: HistoryItem) {
   const s = item.settings;
   const style = s.displayStyle === 'flatlay' ? 'flatlay' : s.fitType;
   const ratio = (s.aspectRatio || '3:4').replace(':', 'x');
+  const angle = s.angle && s.angle !== 'front' ? `-${s.angle}` : '';
   const color = (s.garmentColor || 'original').replace('#', '');
   const stamp = new Date(item.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  return `AruraFit-${s.garmentType}-${style}-${color}-${ratio}-${stamp}.${item.ext}`;
+  return `AruraFit-${s.garmentType}-${style}-${color}${angle}-${ratio}-${stamp}.${item.ext}`;
 }
