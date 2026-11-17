@@ -5,6 +5,7 @@ import { GARMENT_TYPES, DEFAULT_GARMENT_TYPE, findGarmentType, type Measure } fr
 import { RenderError, prepareImage, api, downloadUrl, historyFilename, historyUrls, type HistoryItem, type JobTask, type UsageStats } from './services/geminiService';
 import HistoryView from './HistoryView';
 import BatchView from './BatchView';
+import GuideView from './GuideView';
 
 const COMMON_COLORS = [
   { name: 'Black', hex: '#000000' },
@@ -30,6 +31,7 @@ const DEFAULT_PROFILE: BodyProfile = {
 
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>('ar');
+  const [guideOpen, setGuideOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -298,13 +300,22 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <button 
-          onClick={toggleLang}
-          className="text-xs font-semibold px-4 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors"
-        >
-          {lang === 'en' ? 'العربية' : 'English'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setGuideOpen(true)}
+            className="text-xs font-semibold px-4 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            {lang === 'en' ? 'Guide' : 'دليل'}
+          </button>
+          <button
+            onClick={toggleLang}
+            className="text-xs font-semibold px-4 py-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            {lang === 'en' ? 'العربية' : 'English'}
+          </button>
+        </div>
       </nav>
+      <GuideView lang={lang} open={guideOpen} onClose={() => setGuideOpen(false)} />
 
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
         <div role="tablist" className="inline-flex bg-gray-100 rounded-full p-1">
