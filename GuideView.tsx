@@ -9,7 +9,7 @@ interface Slide {
 }
 
 // One slide per area of the app, in the order the user meets them
-const SLIDES: Slide[] = [
+export const SLIDES: Slide[] = [
   {
     icon: '👋',
     title: { ar: 'أرورا فيت في دقيقة', en: 'AruraFit in a minute' },
@@ -139,7 +139,7 @@ const SLIDES: Slide[] = [
     },
     points: [
       { ar: 'إضافة صور: كل صورة منتج. وتقدر تغيّر نوع القطعة لكل صورة لوحدها.', en: 'Add photos: one product per photo, with a garment type you can set per photo.' },
-      { ar: 'إعدادات الكل: الألوان والمقاس والخلفية والجودة بتتطبّق على كل الصور.', en: 'Settings for all photos apply colors, size, background and quality to every item.' },
+      { ar: 'إعدادات الكل: طريقة العرض والجودة والمقاس والخلفية والإضاءة بتتطبّق على كل الصور. الألوان والزوايا مش في الدفعة، هي في الاستوديو بس.', en: 'Settings for all photos: display style, quality, size, background and lighting apply to every item. Colors and angles are Studio-only.' },
       { ar: 'ابدأ الدفعة: بيعرض حالة كل صورة (منتظرة، شغالة، خلصت، فشلت).', en: 'Start batch shows each item as waiting, working, done or failed.' },
       { ar: 'إعادة المحاولة للي فشل، وتحميل الكل (ZIP) في ملف واحد.', en: 'Retry failed items, and Download all (ZIP) in one file.' },
       { ar: 'لو قفلت الصفحة، الدفعة بتفضل شغالة وتلاقيها لما ترجع.', en: 'If you close the page the batch keeps running and is there when you return.' },
