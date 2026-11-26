@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'path';
-import { timingSafeEqual } from 'crypto';
 import { config } from './server/config';
+import { installLogin } from './server/login';
 import { QUALITIES, oneOf, parseSettings, sanitizeInstruction } from './server/prompt';
 import type { InputImage } from './server/gemini';
 import { createJob, getJob, type TaskInput } from './server/jobs';
@@ -81,27 +81,6 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ab.length === bb.length && timingSafeEqual(ab, bb);
-}
-
-// Optional Basic Auth, enabled only when APP_PASSWORD is set
-function basicAuth(req: Request, res: Response, next: NextFunction) {
-  if (!config.appPassword) return next();
-  const header = req.headers.authorization || '';
-  if (header.startsWith('Basic ')) {
-    const decoded = Buffer.from(header.slice(6), 'base64').toString();
-    const sep = decoded.indexOf(':');
-    if (sep !== -1 && safeEqual(decoded.slice(0, sep), config.appUsername) && safeEqual(decoded.slice(sep + 1), config.appPassword)) {
-      return next();
-    }
-  }
-  res.setHeader('WWW-Authenticate', 'Basic realm="AruraFit", charset="UTF-8"');
-  return res.status(401).send('Authentication required');
-}
-
 await initHistory();
 await initUsage();
 
@@ -114,7 +93,8 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', hasApiKey: Boolean(config.apiKey), model: config.model, proModel: config.proModel });
 });
 
-app.use(basicAuth);
+// In-page login form + session cookie (only when APP_PASSWORD is set)
+installLogin(app, { appName: 'AruraFit', username: config.appUsername, password: config.appPassword, accent: '#18181b' });
 app.use('/api', express.json({ limit: `${config.maxJobPayloadMb}mb` }));
 
 app.get('/api/usage', (_req, res) => {

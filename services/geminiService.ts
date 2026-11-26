@@ -43,6 +43,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   }
   // Error bodies may not be JSON (e.g. a proxy 502 page), so parse defensively
   const data = await response.json().catch(() => null);
+  if (response.status === 401) throw new RenderError('unauthorized');
   if (!response.ok) {
     throw new RenderError(data?.error || (response.status === 429 ? 'rate_limited' : 'server_error'), data?.remaining);
   }
